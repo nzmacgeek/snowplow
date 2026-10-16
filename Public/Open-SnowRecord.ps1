@@ -36,14 +36,15 @@ function Open-SnowRecord {
             if (-not $PSCmdlet.ShouldProcess($url, 'Open in browser')) { continue }
 
             try {
-                if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
+                $platform = Get-SnowplowPlatform
+                if ($platform -eq 'Windows') {
                     Start-Process -FilePath $url -ErrorAction Stop
                 }
-                elseif ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::OSX)) {
+                elseif ($platform -eq 'MacOS') {
                     $null = & open $url
                     if ($LASTEXITCODE -ne 0) { throw 'The macOS open command failed.' }
                 }
-                else {
+                elseif ($platform -eq 'Linux') {
                     if ($env:CI -or (-not $env:DISPLAY -and -not $env:WAYLAND_DISPLAY)) {
                         throw 'No graphical browser session is available. Use Get-SnowLink to retrieve the URL instead.'
                     }
@@ -53,9 +54,14 @@ function Open-SnowRecord {
                     $null = & xdg-open $url
                     if ($LASTEXITCODE -ne 0) { throw 'The xdg-open command failed.' }
                 }
+                else {
+                    throw 'Browser integration is not supported on this platform. Use Get-SnowLink to retrieve the URL instead.'
+                }
             }
             catch {
-                if ($_.Exception.Message -like 'No graphical browser session*' -or $_.Exception.Message -like 'The xdg-open command is unavailable*') {
+                if ($_.Exception.Message -like 'No graphical browser session*' -or
+                    $_.Exception.Message -like 'The xdg-open command is unavailable*' -or
+                    $_.Exception.Message -like 'Browser integration is not supported*') {
                     throw [System.InvalidOperationException]::new($_.Exception.Message)
                 }
                 throw [System.InvalidOperationException]::new("Could not open the ServiceNow URL in a browser. Use Get-SnowLink to retrieve it. $($_.Exception.Message)")

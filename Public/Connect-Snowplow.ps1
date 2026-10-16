@@ -23,6 +23,8 @@ function Connect-Snowplow {
         [pscredential]$ClientCredential,
         # Basic auth user, or the user for the legacy OAuth password grant.
         [pscredential]$Credential,
+        # Existing OAuth access token for headless or CI use; it is kept in memory only.
+        [ValidateScript({ -not [string]::IsNullOrWhiteSpace($_) })][string]$AccessToken,
         # SecretManagement secret names (must resolve to a PSCredential).
         [string]$ClientCredentialSecretName,
         [string]$CredentialSecretName,
@@ -36,11 +38,14 @@ function Connect-Snowplow {
         $storedProfile = Get-SnowStoredProfile -Name $Profile
         if (-not $Instance) { $Instance = $storedProfile.Instance }
         if (-not $PSBoundParameters.ContainsKey('AuthMethod')) { $AuthMethod = $storedProfile.AuthMethod }
-        if (-not $PSBoundParameters.ContainsKey('ClientCredentialSecretName') -and -not $PSBoundParameters.ContainsKey('ClientCredential')) { $ClientCredentialSecretName = $storedProfile.ClientCredentialSecretName }
-        if (-not $PSBoundParameters.ContainsKey('CredentialSecretName') -and -not $PSBoundParameters.ContainsKey('Credential')) { $CredentialSecretName = $storedProfile.CredentialSecretName }
+        if (-not $PSBoundParameters.ContainsKey('ClientCredentialSecretName') -and -not $PSBoundParameters.ContainsKey('ClientCredential') -and -not $AccessToken) { $ClientCredentialSecretName = $storedProfile.ClientCredentialSecretName }
+        if (-not $PSBoundParameters.ContainsKey('CredentialSecretName') -and -not $PSBoundParameters.ContainsKey('Credential') -and -not $AccessToken) { $CredentialSecretName = $storedProfile.CredentialSecretName }
         if (-not $PSBoundParameters.ContainsKey('Vault')) { $Vault = $storedProfile.Vault }
     }
 
+    if ($AccessToken -and ($AuthMethod -eq 'Basic' -or $ClientCredential -or $ClientCredentialSecretName -or $Credential -or $CredentialSecretName)) {
+        throw [System.ArgumentException]::new('-AccessToken cannot be combined with Basic authentication or credential parameters.')
+    }
     if (-not $Instance) {
         throw [System.ArgumentException]::new('Specify -Instance or -Profile.')
     }
@@ -75,7 +80,7 @@ function Connect-Snowplow {
         Write-Warning 'Basic authentication is deprecated for ServiceNow integrations. Prefer OAuth (-ClientCredential).'
     }
     else {
-        if (-not $ClientCredential) {
+        if (-not $ClientCredential -and -not $AccessToken) {
             if ($Profile) {
                 $ClientCredential = Get-Credential -Message "Enter the OAuth client credential for Snowplow profile '$Profile'"
             }
@@ -102,8 +107,8 @@ function Connect-Snowplow {
         AuthMethod       = $AuthMethod
         Credential       = $Credential
         ClientCredential = $ClientCredential
-        AccessToken      = $null
-        ExpiresAt        = [datetime]::MinValue
+        AccessToken      = if ($AccessToken) { ConvertTo-SecureString -String $AccessToken -AsPlainText -Force } else { $null }
+        ExpiresAt        = if ($AccessToken) { [datetime]::MaxValue } else { [datetime]::MinValue }
         ConnectedAt      = [datetime]::UtcNow
         Profile          = $Profile
         Environment      = $environment

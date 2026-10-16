@@ -10,13 +10,13 @@
         'Add-SnowplowProfile', 'Connect-Snowplow', 'Disconnect-Snowplow', 'Get-SnowplowConfiguration', 'Get-SnowplowProfile',
         'Get-SnowRecord', 'New-SnowRecord', 'Set-SnowRecord', 'Remove-SnowRecord',
         'Get-SnowTable', 'Get-SnowDictionary', 'Get-SnowCI', 'Get-SnowCIRelationship',
-        'Export-SnowRecord', 'Compare-SnowRecord', 'New-SnowQuery', 'Where-SnowField',
+        'Export-SnowRecord', 'Compare-SnowRecord', 'New-SnowQuery', 'Find-SnowField',
         'Add-SnowOrderBy', 'New-SnowRelativeDate', 'Remove-SnowplowProfile',
         'Set-SnowplowConfiguration', 'Set-SnowplowProfile', 'Get-SnowLink', 'Open-SnowRecord',
         'Get-SnowplowPromptSegment'
     )
     CmdletsToExport       = @()
     VariablesToExport     = @()
-    AliasesToExport       = @('snow', 'snowc', 'snowl', 'snowo')
+    AliasesToExport       = @('snow', 'snowc', 'snowl', 'snowo', 'Where-SnowField')
     PrivateData           = @{ PSData = @{ Tags = @('ServiceNow', 'REST', 'Admin') } }
 }

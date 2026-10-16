@@ -290,7 +290,7 @@ function Export-SnowRecord {
             ConvertTo-Json -InputObject @($items) -Depth 100
         }
         if ($Path) {
-            Set-Content -LiteralPath $Path -Value $text -Encoding utf8
+            Set-Content -LiteralPath $Path -Value $text -Encoding utf8NoBOM
         }
         else {
             $text

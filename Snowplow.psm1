@@ -19,11 +19,12 @@ Set-Alias -Name snow -Value Get-SnowRecord
 Set-Alias -Name snowc -Value Connect-Snowplow
 Set-Alias -Name snowl -Value Get-SnowLink
 Set-Alias -Name snowo -Value Open-SnowRecord
+Set-Alias -Name Where-SnowField -Value Find-SnowField
 
 $adminFunctions = @(
     'Get-SnowRecord', 'New-SnowRecord', 'Set-SnowRecord', 'Remove-SnowRecord',
     'Get-SnowTable', 'Get-SnowDictionary', 'Get-SnowCI', 'Get-SnowCIRelationship',
-    'Export-SnowRecord', 'Compare-SnowRecord', 'Where-SnowField', 'Add-SnowOrderBy', 'New-SnowRelativeDate'
+    'Export-SnowRecord', 'Compare-SnowRecord', 'Find-SnowField', 'Add-SnowOrderBy', 'New-SnowRelativeDate'
 )
 $profileFunctions = @('Add-SnowplowProfile', 'Get-SnowplowProfile', 'Remove-SnowplowProfile', 'Set-SnowplowProfile')
-Export-ModuleMember -Function ((@($public.BaseName | Where-Object { $_ -notin @('Admin', 'Profiles') }) + $profileFunctions + $adminFunctions) | Sort-Object -Unique) -Alias @('snow', 'snowc', 'snowl', 'snowo')
+Export-ModuleMember -Function ((@($public.BaseName | Where-Object { $_ -notin @('Admin', 'Profiles') }) + $profileFunctions + $adminFunctions) | Sort-Object -Unique) -Alias @('snow', 'snowc', 'snowl', 'snowo', 'Where-SnowField')

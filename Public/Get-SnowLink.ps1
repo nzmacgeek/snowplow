@@ -40,15 +40,39 @@ function Get-SnowLink {
     }
     end {
         if ($Clipboard) {
+            $copied = $false
             if (Get-Command Set-Clipboard -ErrorAction SilentlyContinue) {
                 try {
                     $null = Set-Clipboard -Value ($links -join [Environment]::NewLine) -ErrorAction Stop
+                    $copied = $true
                 }
                 catch {
-                    Write-Warning 'Could not copy the link to the clipboard; the link is still returned.'
+                    $copied = $false
                 }
             }
-            else {
+            if (-not $copied -and (Get-SnowplowPlatform) -eq 'Linux') {
+                $text = $links -join [Environment]::NewLine
+                foreach ($clipboardUtility in @(
+                    @{ Name = 'wl-copy'; Arguments = @() },
+                    @{ Name = 'xclip'; Arguments = @('-selection', 'clipboard') },
+                    @{ Name = 'xsel'; Arguments = @('--clipboard', '--input') }
+                )) {
+                    $command = Get-Command $clipboardUtility.Name -CommandType Application -ErrorAction SilentlyContinue
+                    if (-not $command) { continue }
+                    try {
+                        $arguments = $clipboardUtility.Arguments
+                        $text | & $command.Source @arguments
+                        if ($LASTEXITCODE -eq 0) {
+                            $copied = $true
+                            break
+                        }
+                    }
+                    catch {
+                        continue
+                    }
+                }
+            }
+            if (-not $copied) {
                 Write-Warning 'Clipboard support is unavailable; the link is still returned.'
             }
         }

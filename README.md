@@ -133,4 +133,12 @@ connecting; the profile file contains the secret reference, not the credential.
 SecretManagement and the SecretStore extension must be installed in the same
 PowerShell environment used to connect.
 
+Linux-specific installation, XDG paths, permissions, proxy/TLS configuration,
+non-interactive credentials, and known limitations are described in
+[docs/linux.md](docs/linux.md).
+
+On Linux, browser opening requires a graphical session and `xdg-open`; clipboard
+copying requires an available desktop clipboard utility. The optional Sdk
+backend's table adapter is not yet implemented, so use Rest.
+
 Run the Pester tests with `Invoke-Pester ./Tests`.
