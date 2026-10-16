@@ -94,7 +94,7 @@ Describe 'Snow query builder' {
 
 Describe 'Module' {
     It 'exports only public functions' {
-        (Get-Command -Module Snowplow).Name | Sort-Object |
+        (Get-Command -Module Snowplow -CommandType Function).Name | Sort-Object |
             Should -Be (@(
                 'Compare-SnowRecord', 'Connect-Snowplow', 'Disconnect-Snowplow', 'Export-SnowRecord',
                 'Get-SnowCI', 'Get-SnowCIRelationship', 'Get-SnowDictionary', 'Get-SnowRecord',
@@ -142,10 +142,27 @@ Describe 'CLI conveniences' {
             Should -Be "<a href=`"$url`">INC001</a>"
     }
 
+    It 'uses the generated URL as the label when a pipeline record has no number' {
+        $record = [pscustomobject]@{ sys_id = $Sid }
+        $record.PSTypeNames.Insert(0, 'Snowplow.Record.incident')
+        $url = "https://dev1.service-now.com/incident.do?sys_id=$Sid"
+        $record | Get-SnowLink -Format Markdown | Should -Be "[$url]($url)"
+        $record | Get-SnowLink -Format Html |
+            Should -Be "<a href=`"$url`">$url</a>"
+    }
+
     It 'resolves a record number and a table schema before building links' {
         Mock -ModuleName Snowplow Get-SnowRecord { [pscustomobject]@{ sys_id = $Sid; number = 'INC001' } }
         Get-SnowLink -Table incident -Number INC001 | Should -Be "https://dev1.service-now.com/incident.do?sys_id=$Sid"
         Get-SnowLink -Table incident -Schema | Should -Be "https://dev1.service-now.com/sys_db_object.do?sys_id=$Sid"
+    }
+
+    It 'throws InvalidDataException when a lookup returns a malformed sys_id' {
+        Mock -ModuleName Snowplow Get-SnowRecord { [pscustomobject]@{ sys_id = 'invalid' } }
+        { Get-SnowLink -Table incident -Number INC001 } |
+            Should -Throw -ExceptionType ([System.IO.InvalidDataException])
+        { Get-SnowLink -Table incident -Schema } |
+            Should -Throw -ExceptionType ([System.IO.InvalidDataException])
     }
 
     It 'accepts pipeline records and returns URLs without opening a browser' {
@@ -153,6 +170,15 @@ Describe 'CLI conveniences' {
         $record.PSTypeNames.Insert(0, 'Snowplow.Record.incident')
         $record | Get-SnowLink | Should -Be "https://dev1.service-now.com/incident.do?sys_id=$Sid"
         $record | Open-SnowRecord -PassThru | Should -Be "https://dev1.service-now.com/incident.do?sys_id=$Sid"
+    }
+
+    It 'does not request bulk confirmation for a WhatIf batch' {
+        $records = foreach ($i in 1..6) {
+            $record = [pscustomobject]@{ sys_id = [string]([char](96 + $i)) * 32 }
+            $record.PSTypeNames.Insert(0, 'Snowplow.Record.incident')
+            $record
+        }
+        { $records | Open-SnowRecord -WhatIf } | Should -Not -Throw
     }
 
     It 'returns a link when clipboard support is unavailable or fails' {

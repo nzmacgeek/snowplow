@@ -23,6 +23,7 @@ function Get-SnowLink {
     process {
         $url = New-SnowRecordUri -Table $Table -SysId $SysId -Number $Number -Query $Query -Schema:$Schema -UseNavTo:$UseNavTo -InputObject $InputObject
         $label = if ($Number) { $Number } elseif ($InputObject -and $InputObject.PSObject.Properties['number']) { [string]$InputObject.number } elseif ($SysId) { "$Table/$SysId" } else { $Table }
+        if ([string]::IsNullOrWhiteSpace($label)) { $label = $url }
         $link = switch ($Format) {
             Markdown {
                 $markdownLabel = $label.Replace('\', '\\').Replace('[', '\[').Replace(']', '\]')

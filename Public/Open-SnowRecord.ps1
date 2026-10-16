@@ -28,7 +28,7 @@ function Open-SnowRecord {
             $urls.ToArray()
             return
         }
-        if ($urls.Count -gt 5 -and -not $Force -and -not $PSCmdlet.ShouldContinue("Open $($urls.Count) ServiceNow pages?", 'Confirm bulk browser open')) {
+        if ($urls.Count -gt 5 -and -not $Force -and -not $WhatIfPreference -and -not $PSCmdlet.ShouldContinue("Open $($urls.Count) ServiceNow pages?", 'Confirm bulk browser open')) {
             return
         }
 
