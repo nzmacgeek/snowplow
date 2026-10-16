@@ -6,9 +6,18 @@ $script:SnowplowSession = $null
 $script:SnowplowConfig = @{
     DefaultBackend = 'Rest'   # Rest | Sdk | Auto
 }
+$script:SnowSchemaCache = @{
+    Tables = $null
+    Fields = @{}
+}
 
 $private = @(Get-ChildItem -Path (Join-Path $PSScriptRoot 'Private') -Filter '*.ps1' -ErrorAction SilentlyContinue)
 $public = @(Get-ChildItem -Path (Join-Path $PSScriptRoot 'Public') -Filter '*.ps1' -ErrorAction SilentlyContinue)
 foreach ($file in $private + $public) { . $file.FullName }
 
-Export-ModuleMember -Function $public.BaseName
+$adminFunctions = @(
+    'Get-SnowRecord', 'New-SnowRecord', 'Set-SnowRecord', 'Remove-SnowRecord',
+    'Get-SnowTable', 'Get-SnowDictionary', 'Get-SnowCI', 'Get-SnowCIRelationship',
+    'Export-SnowRecord', 'Compare-SnowRecord'
+)
+Export-ModuleMember -Function (@($public.BaseName | Where-Object { $_ -ne 'Admin' }) + $adminFunctions)
