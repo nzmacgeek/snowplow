@@ -17,6 +17,19 @@ Connect-Snowplow -Profile dev
 Get-SnowRecord -Table incident -Query 'active=true' `
     -Fields number,short_description -Limit 20
 
+# Build encoded queries instead of hand-writing separators.
+$query = New-SnowQuery -Conditions ([ordered]@{
+    active = 'true'
+    priority = @{ Operator = 'IN'; Value = @('1', '2'); Joiner = 'OR' }
+})
+Get-SnowRecord -Table incident -Query $query
+
+# Fluent conditions, relative dates, and ordering are also supported.
+$query = New-SnowQuery |
+    Where-SnowField sys_created_on -Operator '>' -Value (New-SnowRelativeDate -Last 7 -Unit Days) |
+    Add-SnowOrderBy sys_created_on -Descending
+Get-SnowRecord -Table incident -Query $query
+
 # Writes support PowerShell ShouldProcess.
 New-SnowRecord -Table incident -Values @{ short_description = 'Printer offline' } -WhatIf
 Set-SnowRecord -Table incident -SysId '<32-character-sys_id>' -Values @{ priority = '2' } -WhatIf
@@ -28,7 +41,12 @@ Disconnect-Snowplow
 ## Administrator cmdlets
 
 - `Get-SnowRecord` reads from any table. Use `-Limit` to cap results or `-All` to
-  page through every matching record.
+  page through every matching record. Its `-Query` parameter also accepts raw
+  encoded query strings.
+- `New-SnowQuery` builds encoded queries from a hashtable. `Where-SnowField` adds
+  conditions, `Add-SnowOrderBy` adds sorting, and `New-SnowRelativeDate` creates
+  `javascript:gs` relative-date values. Query-builder field parameters complete
+  from the schema cache populated by `Get-SnowDictionary -All`.
 - `New-SnowRecord`, `Set-SnowRecord`, and `Remove-SnowRecord` create, update, and
   delete records. They honor `-WhatIf` and `-Confirm`; updates use PATCH unless
   `-Replace` selects PUT.
