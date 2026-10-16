@@ -78,6 +78,9 @@ function Connect-Snowplow {
         throw
     }
 
+    $script:SnowSchemaCache.Tables = $null
+    $script:SnowSchemaCache.Fields = @{}
+
     [pscustomobject]@{
         PSTypeName = 'Snowplow.Session'
         Instance   = $baseUri.Host

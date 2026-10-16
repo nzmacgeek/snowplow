@@ -8,4 +8,6 @@ function Disconnect-Snowplow {
     [CmdletBinding()]
     param()
     $script:SnowplowSession = $null
+    $script:SnowSchemaCache.Tables = $null
+    $script:SnowSchemaCache.Fields = @{}
 }

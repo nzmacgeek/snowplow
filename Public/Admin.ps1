@@ -141,7 +141,7 @@ function Get-SnowTable {
     }
     if (-not $All) { $request.First = $Limit }
     $tables = @(Invoke-SnowBackendRequest @request)
-    $script:SnowSchemaCache.Tables = $tables
+    if (-not $Query -and $All) { $script:SnowSchemaCache.Tables = $tables }
     $tables
 }
 
@@ -177,7 +177,7 @@ function Get-SnowDictionary {
     }
     if (-not $All) { $request.First = $Limit }
     $fields = @(Invoke-SnowBackendRequest @request)
-    $script:SnowSchemaCache.Fields[$Table] = $fields
+    if (-not $Element -and $All) { $script:SnowSchemaCache.Fields[$Table] = $fields }
     $fields
 }
 
@@ -278,7 +278,7 @@ function Compare-SnowRecord {
     )
 
     $names = if ($Property) { $Property } else {
-        @($Reference.PSObject.Properties.Name + $Difference.PSObject.Properties.Name | Sort-Object -Unique)
+        @($Reference.PSObject.Properties.Name) + @($Difference.PSObject.Properties.Name) | Sort-Object -Unique
     }
     foreach ($name in $names) {
         $leftProperty = $Reference.PSObject.Properties[$name]

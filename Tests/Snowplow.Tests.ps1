@@ -88,6 +88,24 @@ Describe 'Connect-Snowplow' {
         { Connect-Snowplow -Instance dev1 -AuthMethod Basic -Credential $Cred -WarningAction SilentlyContinue } | Should -Throw '*HTTP 401*'
         InModuleScope Snowplow { $script:SnowplowSession } | Should -BeNullOrEmpty
     }
+    It 'clears schema caches when connecting or disconnecting' {
+        InModuleScope Snowplow {
+            $script:SnowSchemaCache.Tables = @([pscustomobject]@{ name = 'old_table' })
+            $script:SnowSchemaCache.Fields.old_table = @([pscustomobject]@{ element = 'old_field' })
+        }
+        Mock -ModuleName Snowplow Invoke-RestMethod { [pscustomobject]@{ result = @() } }
+        $null = Connect-Snowplow -Instance dev1 -AuthMethod Basic -Credential $Cred -SkipValidation -WarningAction SilentlyContinue
+        InModuleScope Snowplow { $script:SnowSchemaCache.Tables } | Should -BeNullOrEmpty
+        InModuleScope Snowplow { $script:SnowSchemaCache.Fields.Count } | Should -Be 0
+
+        InModuleScope Snowplow {
+            $script:SnowSchemaCache.Tables = @([pscustomobject]@{ name = 'old_table' })
+            $script:SnowSchemaCache.Fields.old_table = @([pscustomobject]@{ element = 'old_field' })
+        }
+        Disconnect-Snowplow
+        InModuleScope Snowplow { $script:SnowSchemaCache.Tables } | Should -BeNullOrEmpty
+        InModuleScope Snowplow { $script:SnowSchemaCache.Fields.Count } | Should -Be 0
+    }
 }
 
 Describe 'Invoke-SnowRequest' {
@@ -302,14 +320,30 @@ Describe 'Admin cmdlets' {
     }
 
     It 'lists tables and caches their schema' {
-        Get-SnowTable -Limit 25 | Out-Null
-        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -ParameterFilter { $Table -eq 'sys_db_object' -and $First -eq 25 }
+        Get-SnowTable -All -Limit 25 | Out-Null
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -ParameterFilter { $Table -eq 'sys_db_object' -and -not $PSBoundParameters.ContainsKey('First') }
         InModuleScope Snowplow { $script:SnowSchemaCache.Tables } | Should -Not -BeNullOrEmpty
     }
 
-    It 'gets and caches dictionary fields' {
-        Get-SnowDictionary -Table incident -Element priority | Out-Null
+    It 'gets dictionary fields without caching filtered results' {
+        Get-SnowDictionary -Table incident -Element priority -All | Out-Null
         Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -ParameterFilter { $Table -eq 'sys_dictionary' -and $Query -eq 'name=incident^element=priority' }
+        InModuleScope Snowplow { $script:SnowSchemaCache.Fields.ContainsKey('incident') } | Should -BeFalse
+    }
+
+    It 'does not cache filtered or limited schema lookups' {
+        Get-SnowTable -Query 'nameSTARTSWITHcmdb' -All | Out-Null
+        Get-SnowTable -Limit 25 | Out-Null
+        Get-SnowDictionary -Table incident -Element priority -All | Out-Null
+        Get-SnowDictionary -Table incident -Limit 25 | Out-Null
+        InModuleScope Snowplow {
+            $script:SnowSchemaCache.Tables | Should -BeNullOrEmpty
+            $script:SnowSchemaCache.Fields.Count | Should -Be 0
+        }
+    }
+
+    It 'caches complete unfiltered dictionary fields' {
+        Get-SnowDictionary -Table incident -All | Out-Null
         InModuleScope Snowplow { $script:SnowSchemaCache.Fields.ContainsKey('incident') } | Should -BeTrue
     }
 
@@ -334,6 +368,16 @@ Describe 'Admin cmdlets' {
         $diff.Property | Should -Be state
         $diff.Reference | Should -Be '1'
         $diff.Difference | Should -Be '2'
+    }
+
+    It 'compares single-property records correctly' {
+        $diff = Compare-SnowRecord -Reference ([pscustomobject]@{ state = '1' }) -Difference ([pscustomobject]@{ state = '2' })
+        @($diff).Count | Should -Be 1
+        $diff.Property | Should -Be state
+        $diff.Reference | Should -Be '1'
+        $diff.Difference | Should -Be '2'
+        Compare-SnowRecord -Reference ([pscustomobject]@{ state = '1' }) -Difference ([pscustomobject]@{ state = '1' }) |
+            Should -BeNullOrEmpty
     }
 
     It 'completes tables and fields from cached schema' {
