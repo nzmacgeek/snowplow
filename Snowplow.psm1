@@ -18,7 +18,7 @@ foreach ($file in $private + $public) { . $file.FullName }
 $adminFunctions = @(
     'Get-SnowRecord', 'New-SnowRecord', 'Set-SnowRecord', 'Remove-SnowRecord',
     'Get-SnowTable', 'Get-SnowDictionary', 'Get-SnowCI', 'Get-SnowCIRelationship',
-    'Export-SnowRecord', 'Compare-SnowRecord'
+    'Export-SnowRecord', 'Compare-SnowRecord', 'Where-SnowField', 'Add-SnowOrderBy', 'New-SnowRelativeDate'
 )
 $profileFunctions = @('Add-SnowplowProfile', 'Get-SnowplowProfile', 'Remove-SnowplowProfile', 'Set-SnowplowProfile')
 Export-ModuleMember -Function ((@($public.BaseName | Where-Object { $_ -notin @('Admin', 'Profiles') }) + $profileFunctions + $adminFunctions) | Sort-Object -Unique)

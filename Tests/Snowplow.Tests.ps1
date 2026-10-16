@@ -16,6 +16,66 @@ BeforeAll {
     $script:Sid = 'a' * 32
 }
 
+Describe 'Snow query builder' {
+    It 'builds known encoded queries from condition hashtables' {
+        $conditions = [ordered]@{
+            name = @{ Operator = 'STARTSWITH'; Value = 'INC' }
+            priority = @{ Operator = 'IN'; Value = @('1', '2'); Joiner = 'OR' }
+            active = @{ Operator = '='; Value = $false; Joiner = 'NQ' }
+        }
+        New-SnowQuery -Conditions $conditions | Should -Be 'nameSTARTSWITHINC^ORpriorityIN1,2^NQactive=false'
+    }
+
+    It 'supports operators without values and validates list operands' {
+        New-SnowQuery -Conditions @{ short_description = @{ Operator = 'ISEMPTY' } } |
+            Should -Be 'short_descriptionISEMPTY'
+        New-SnowQuery -Conditions @{ priority = @{ Operator = 'BETWEEN'; Value = @(1, 3) } } |
+            Should -Be 'priorityBETWEEN1@3'
+        { New-SnowQuery -Conditions @{ priority = @{ Operator = 'BETWEEN'; Value = @(1) } } } |
+            Should -Throw '*BETWEEN requires exactly two values*'
+    }
+
+    It 'encodes the remaining comparison and text operators' {
+        $conditions = [ordered]@{
+            active = @{ Operator = '!='; Value = 'false' }
+            short_description = @{ Operator = 'LIKE'; Value = 'printer' }
+            priority = @{ Operator = '<'; Value = 3 }
+            assigned_to = @{ Operator = 'ISNOTEMPTY' }
+        }
+        New-SnowQuery -Conditions $conditions |
+            Should -Be 'active!=false^short_descriptionLIKEprinter^priority<3^assigned_toISNOTEMPTY'
+    }
+
+    It 'escapes query delimiters in values without altering other characters' {
+        $query = New-SnowQuery -Conditions @{ short_description = 'a^b\c &+?' }
+        $query | Should -Be 'short_description=a\^b\\c &+?'
+    }
+
+    It 'builds and extends fluent queries with sorting and relative dates' {
+        $query = New-SnowQuery |
+            Where-SnowField active -Value $true |
+            Where-SnowField sys_created_on -Operator '>' -Value (New-SnowRelativeDate -Last 7 -Unit Days) |
+            Add-SnowOrderBy sys_created_on -Descending
+        $query | Should -Be 'active=true^sys_created_on>javascript:gs.daysAgoStart(7)^ORDERBYDESCsys_created_on'
+        (New-SnowRelativeDate -Last 2 -Unit Weeks -Boundary End) | Should -Be 'javascript:gs.weeksAgoEnd(2)'
+    }
+
+    It 'completes fields in query-builder commands from the schema cache' {
+        InModuleScope Snowplow {
+            $script:SnowSchemaCache.Fields.incident = @(
+                [pscustomobject]@{ element = 'number' },
+                [pscustomobject]@{ element = 'short_description' }
+            )
+        }
+        $scriptText = 'Where-SnowField -Table incident -Field short'
+        (TabExpansion2 $scriptText $scriptText.Length).CompletionMatches.CompletionText |
+            Should -Contain short_description
+        $scriptText = 'Add-SnowOrderBy -Table incident -Field short'
+        (TabExpansion2 $scriptText $scriptText.Length).CompletionMatches.CompletionText |
+            Should -Contain short_description
+    }
+}
+
 Describe 'Module' {
     It 'exports only public functions' {
         (Get-Command -Module Snowplow).Name | Sort-Object |
@@ -23,6 +83,7 @@ Describe 'Module' {
                 'Compare-SnowRecord', 'Connect-Snowplow', 'Disconnect-Snowplow', 'Export-SnowRecord',
                 'Get-SnowCI', 'Get-SnowCIRelationship', 'Get-SnowDictionary', 'Get-SnowRecord',
                 'Get-SnowTable', 'Get-SnowplowConfiguration', 'Get-SnowplowProfile', 'New-SnowRecord',
+                'New-SnowQuery', 'Where-SnowField', 'Add-SnowOrderBy', 'New-SnowRelativeDate',
                 'Remove-SnowRecord', 'Remove-SnowplowProfile', 'Set-SnowRecord', 'Set-SnowplowConfiguration',
                 'Add-SnowplowProfile', 'Set-SnowplowProfile'
             ) | Sort-Object)
@@ -415,6 +476,14 @@ Describe 'Admin cmdlets' {
         $record.PSTypeNames | Should -Contain 'Snowplow.Record.incident'
         Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -ParameterFilter {
             $Table -eq 'incident' -and $Query -eq 'active=true' -and $First -eq 10 -and $Fields -contains 'number'
+        }
+    }
+
+    It 'passes a built query to Get-SnowRecord unchanged' {
+        $query = New-SnowQuery -Conditions ([ordered]@{ active = 'true'; priority = '1' })
+        Get-SnowRecord -Table incident -Query $query | Out-Null
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -ParameterFilter {
+            $Table -eq 'incident' -and $Query -eq 'active=true^priority=1'
         }
     }
 

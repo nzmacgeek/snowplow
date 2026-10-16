@@ -10,7 +10,9 @@
         'Add-SnowplowProfile', 'Connect-Snowplow', 'Disconnect-Snowplow', 'Get-SnowplowConfiguration', 'Get-SnowplowProfile',
         'Get-SnowRecord', 'New-SnowRecord', 'Set-SnowRecord', 'Remove-SnowRecord',
         'Get-SnowTable', 'Get-SnowDictionary', 'Get-SnowCI', 'Get-SnowCIRelationship',
-        'Export-SnowRecord', 'Compare-SnowRecord', 'Remove-SnowplowProfile', 'Set-SnowplowConfiguration', 'Set-SnowplowProfile'
+        'Export-SnowRecord', 'Compare-SnowRecord', 'New-SnowQuery', 'Where-SnowField',
+        'Add-SnowOrderBy', 'New-SnowRelativeDate', 'Remove-SnowplowProfile',
+        'Set-SnowplowConfiguration', 'Set-SnowplowProfile'
     )
     CmdletsToExport       = @()
     VariablesToExport     = @()
