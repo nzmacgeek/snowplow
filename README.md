@@ -59,6 +59,34 @@ Disconnect-Snowplow
 - `Compare-SnowRecord -Reference $left -Difference $right` returns changed,
   added, and missing properties. Fetch the two input objects from separate
   connected instances to compare records across instances.
+- `Get-SnowLink` builds a record, list, or table-definition URL. Use `-Number`
+  instead of `-SysId` to resolve a record, `-Format Markdown|Html` for formatted
+  links, `-Clipboard` to copy when clipboard support is available, and
+  `-UseNavTo` for a classic frame-wrapped URL. `Open-SnowRecord` opens the same
+  URLs in the default browser; it accepts `Get-SnowRecord` pipeline output,
+  opens list views with `-Query`, and opens a table definition with `-Schema`.
+  It returns URLs without opening the browser when passed `-PassThru`. Pipeline
+  batches over five records ask for confirmation unless `-Force` is supplied.
+
+## Interactive conveniences
+
+The module exports these explicit aliases: `snow` for `Get-SnowRecord`, `snowc`
+for `Connect-Snowplow`, `snowo` for `Open-SnowRecord`, and `snowl` for
+`Get-SnowLink`. They are module-scoped aliases with names that do not overlap
+PowerShell's built-in aliases on Windows, Linux, or macOS. Remove one after
+import with `Remove-Item Alias:snow`, or override it with
+`Set-Alias snow Get-SnowTable`.
+
+`Get-SnowplowPromptSegment` returns a colored segment for the active profile (or
+instance); Prod is red and Test is yellow. It returns nothing when disconnected.
+The module never changes your prompt or profile automatically. To add the
+segment to a custom PowerShell prompt:
+
+```powershell
+function prompt {
+    "$(Get-SnowplowPromptSegment) PS $($executionContext.SessionState.Path.CurrentLocation)> "
+}
+```
 
 ## Configuration and backends
 
