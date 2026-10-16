@@ -57,7 +57,8 @@ interactively first and unlock it in the job before connecting:
 
 ```powershell
 $vaultPassword = ConvertTo-SecureString $env:SNOWPLOW_VAULT_PASSWORD -AsPlainText -Force
-Unlock-SecretStore******
+$unlockParameters = @{ Password = $vaultPassword }
+Unlock-SecretStore @unlockParameters
 Connect-Snowplow -Profile dev
 ```
 
