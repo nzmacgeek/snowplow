@@ -96,7 +96,7 @@ function New-SnowQuery {
     $terms -join ''
 }
 
-function Where-SnowField {
+function Find-SnowField {
     <#
     .SYNOPSIS
         Adds a field condition to a ServiceNow encoded query.

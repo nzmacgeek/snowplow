@@ -100,7 +100,7 @@ Describe 'Module' {
                 'Get-SnowCI', 'Get-SnowCIRelationship', 'Get-SnowDictionary', 'Get-SnowRecord',
                 'Get-SnowTable', 'Get-SnowplowConfiguration', 'Get-SnowplowProfile', 'Get-SnowLink',
                 'Get-SnowplowPromptSegment', 'Open-SnowRecord', 'New-SnowRecord',
-                'New-SnowQuery', 'Where-SnowField', 'Add-SnowOrderBy', 'New-SnowRelativeDate',
+                'New-SnowQuery', 'Find-SnowField', 'Add-SnowOrderBy', 'New-SnowRelativeDate',
                 'Remove-SnowRecord', 'Remove-SnowplowProfile', 'Set-SnowRecord', 'Set-SnowplowConfiguration',
                 'Add-SnowplowProfile', 'Set-SnowplowProfile'
             ) | Sort-Object)
@@ -114,6 +114,7 @@ Describe 'Module' {
         (Get-Alias snowc).Definition | Should -Be 'Connect-Snowplow'
         (Get-Alias snowl).Definition | Should -Be 'Get-SnowLink'
         (Get-Alias snowo).Definition | Should -Be 'Open-SnowRecord'
+        (Get-Alias Where-SnowField).Definition | Should -Be 'Find-SnowField'
     }
 }
 
@@ -223,6 +224,25 @@ Describe 'CLI conveniences' {
         $segment | Should -Match ([regex]::Escape([string]$PSStyle.Foreground.Red))
     }
 
+    It 'omits ANSI styling when NO_COLOR is set' {
+        $noColor = $env:NO_COLOR
+        try {
+            $env:NO_COLOR = '1'
+            InModuleScope Snowplow {
+                $script:SnowplowSession = [pscustomobject]@{
+                    BaseUri = [uri]'https://prod.service-now.com/'
+                    Profile = 'prod'
+                    Environment = 'Prod'
+                }
+            }
+            $segment = Get-SnowplowPromptSegment
+            $segment | Should -Be '[snow:prod]'
+        }
+        finally {
+            if ($null -eq $noColor) { Remove-Item Env:NO_COLOR -ErrorAction SilentlyContinue } else { $env:NO_COLOR = $noColor }
+        }
+    }
+
     It 'fails clearly when generating a URL without an active connection' {
         Disconnect-Snowplow
         { Get-SnowLink -Table incident } | Should -Throw '*Not connected*'
@@ -269,6 +289,19 @@ Describe 'Connect-Snowplow' {
         $s.PSObject.Properties.Name | Should -Not -Contain 'AccessToken'
         Should -Invoke -ModuleName Snowplow Invoke-RestMethod -ParameterFilter { $Uri.AbsolutePath -eq '/oauth_token.do' -and $Body.grant_type -eq 'client_credentials' -and $Body.client_id -eq 'cid' }
         Should -Invoke -ModuleName Snowplow Invoke-RestMethod -ParameterFilter { $Headers.Authorization -eq 'Bearer tok' }
+    }
+    It 'uses a supplied access token without requesting another token' {
+        Mock -ModuleName Snowplow Invoke-RestMethod { [pscustomobject]@{ result = @() } }
+        $null = Connect-Snowplow -Instance dev1 -AccessToken 'ci-token'
+        Should -Invoke -ModuleName Snowplow Invoke-RestMethod -Times 1 -Exactly -ParameterFilter {
+            $Uri.AbsolutePath -like '/api/*' -and $Headers.Authorization -match '^Bearer'
+        }
+        InModuleScope Snowplow {
+            [System.Net.NetworkCredential]::new('', $script:SnowplowSession.AccessToken).Password |
+                Should -Be 'ci-token'
+        }
+        { Connect-Snowplow -Instance dev1 -AccessToken 'ci-token' -ClientCredential $Client } |
+            Should -Throw '*cannot be combined*'
     }
     It 'uses the password grant when a user credential is also supplied' {
         Mock -ModuleName Snowplow Invoke-RestMethod { [pscustomobject]@{ access_token = 'tok'; expires_in = 60 } } -ParameterFilter { $Uri.AbsolutePath -eq '/oauth_token.do' }
@@ -423,6 +456,47 @@ Describe 'Snowplow profiles' {
             $_.Exception.Message
         }
         $errorMessage | Should -Not -Match 'sample-user|sample-password|dev3'
+    }
+}
+
+Describe 'Linux portability' {
+    It 'uses XDG defaults and configured directories for Linux' -Skip:(-not $IsLinux) {
+        $originalConfig = $env:XDG_CONFIG_HOME
+        $originalCache = $env:XDG_CACHE_HOME
+        $originalData = $env:XDG_DATA_HOME
+        try {
+            Remove-Item Env:XDG_CONFIG_HOME, Env:XDG_CACHE_HOME, Env:XDG_DATA_HOME -ErrorAction SilentlyContinue
+            $defaults = InModuleScope Snowplow { Get-SnowplowDirectories }
+            $homeDirectory = [Environment]::GetFolderPath('UserProfile')
+            $defaults.Config | Should -Be (Join-Path $homeDirectory '.config/snowplow')
+            $defaults.Cache | Should -Be (Join-Path $homeDirectory '.cache/snowplow')
+            $defaults.Data | Should -Be (Join-Path $homeDirectory '.local/share/snowplow')
+
+            $env:XDG_CONFIG_HOME = Join-Path $TestDrive 'config'
+            $env:XDG_CACHE_HOME = Join-Path $TestDrive 'cache'
+            $env:XDG_DATA_HOME = Join-Path $TestDrive 'data'
+            $configured = InModuleScope Snowplow { Get-SnowplowDirectories }
+            $configured.Config | Should -Be (Join-Path $env:XDG_CONFIG_HOME 'snowplow')
+            $configured.Cache | Should -Be (Join-Path $env:XDG_CACHE_HOME 'snowplow')
+            $configured.Data | Should -Be (Join-Path $env:XDG_DATA_HOME 'snowplow')
+        }
+        finally {
+            if ($null -eq $originalConfig) { Remove-Item Env:XDG_CONFIG_HOME -ErrorAction SilentlyContinue } else { $env:XDG_CONFIG_HOME = $originalConfig }
+            if ($null -eq $originalCache) { Remove-Item Env:XDG_CACHE_HOME -ErrorAction SilentlyContinue } else { $env:XDG_CACHE_HOME = $originalCache }
+            if ($null -eq $originalData) { Remove-Item Env:XDG_DATA_HOME -ErrorAction SilentlyContinue } else { $env:XDG_DATA_HOME = $originalData }
+        }
+    }
+
+    It 'writes profile files with restrictive permissions and UTF-8 without a BOM' -Skip:(-not $IsLinux) {
+        $profileDirectory = Join-Path $TestDrive 'private-config'
+        Mock -ModuleName Snowplow Get-SnowProfileStorePath { Join-Path $profileDirectory 'profiles.json' }
+        Add-SnowplowProfile -Name linux -Instance dev1
+        $profilePath = Join-Path $profileDirectory 'profiles.json'
+        [System.IO.File]::GetUnixFileMode($profileDirectory) |
+            Should -Be ([System.IO.UnixFileMode]::UserRead -bor [System.IO.UnixFileMode]::UserWrite -bor [System.IO.UnixFileMode]::UserExecute)
+        [System.IO.File]::GetUnixFileMode($profilePath) |
+            Should -Be ([System.IO.UnixFileMode]::UserRead -bor [System.IO.UnixFileMode]::UserWrite)
+        [System.IO.File]::ReadAllBytes($profilePath)[0..2] | Should -Not -Be @(0xEF, 0xBB, 0xBF)
     }
 }
 

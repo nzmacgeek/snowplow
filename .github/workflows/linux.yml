@@ -1,0 +1,40 @@
+name: Linux
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check case-sensitive paths
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          import sys
+
+          paths = subprocess.check_output(["git", "ls-files", "-z"]).decode().split("\0")
+          seen = {}
+          collisions = []
+          for path in filter(None, paths):
+              key = path.casefold()
+              if key in seen and seen[key] != path:
+                  collisions.append((seen[key], path))
+              seen[key] = path
+          if collisions:
+              for first, second in collisions:
+                  print(f"Case-insensitive path collision: {first} / {second}", file=sys.stderr)
+              sys.exit(1)
+          PY
+      - name: Install Pester
+        shell: pwsh
+        run: Install-Module Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -SkipPublisherCheck
+      - name: Test module
+        shell: pwsh
+        run: Invoke-Pester ./Tests -CI

@@ -18,5 +18,8 @@ function Get-SnowplowPromptSegment {
         'Test' { $PSStyle.Foreground.Yellow }
         default { $PSStyle.Foreground.Green }
     }
+    if ($env:NO_COLOR -or -not $Host.UI.SupportsVirtualTerminal) {
+        return "[snow:$label]"
+    }
     "$color[snow:$label]$($PSStyle.Reset)"
 }

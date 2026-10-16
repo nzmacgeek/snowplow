@@ -2,17 +2,7 @@ function Get-SnowProfileStorePath {
     [CmdletBinding()]
     param()
 
-    $root = if ($IsWindows) {
-        Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'Snowplow'
-    }
-    elseif ($env:XDG_CONFIG_HOME) {
-        Join-Path $env:XDG_CONFIG_HOME 'snowplow'
-    }
-    else {
-        Join-Path ([Environment]::GetFolderPath('UserProfile')) '.snowplow'
-    }
-
-    Join-Path $root 'profiles.json'
+    Join-Path (Get-SnowplowDirectories).Config 'profiles.json'
 }
 
 function Read-SnowProfileStore {
@@ -76,8 +66,9 @@ function Write-SnowProfileStore {
     $path = Get-SnowProfileStorePath
     $directory = Split-Path -Path $path -Parent
     if (-not (Test-Path -LiteralPath $directory)) {
-        $null = New-Item -Path $directory -ItemType Directory -Force
+        $null = [System.IO.Directory]::CreateDirectory($directory)
     }
+    Protect-SnowplowPath -Path $directory -Type Directory
 
     $json = if ($Profiles.Count -eq 0) {
         '[]'
@@ -85,7 +76,8 @@ function Write-SnowProfileStore {
     else {
         $Profiles | Sort-Object Name | ConvertTo-Json -Depth 4
     }
-    Set-Content -LiteralPath $path -Value $json -Encoding utf8
+    Set-Content -LiteralPath $path -Value $json -Encoding utf8NoBOM
+    Protect-SnowplowPath -Path $path -Type File
 }
 
 function Get-SnowStoredProfile {
