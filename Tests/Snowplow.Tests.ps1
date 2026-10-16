@@ -220,8 +220,13 @@ Describe 'CLI conveniences' {
         }
         $segment = Get-SnowplowPromptSegment
         $segment | Should -Match '\[snow:prod\]'
-        $segment | Should -Match ([regex]::Escape([string][char]27))
-        $segment | Should -Match ([regex]::Escape([string]$PSStyle.Foreground.Red))
+        if ($env:NO_COLOR -or -not $Host.UI.SupportsVirtualTerminal) {
+            $segment | Should -Be '[snow:prod]'
+        }
+        else {
+            $segment | Should -Match ([regex]::Escape([string][char]27))
+            $segment | Should -Match ([regex]::Escape([string]$PSStyle.Foreground.Red))
+        }
     }
 
     It 'omits ANSI styling when NO_COLOR is set' {
@@ -396,6 +401,23 @@ Describe 'Connect-Snowplow' {
 Describe 'Snowplow profiles' {
     BeforeEach {
         Mock -ModuleName Snowplow Get-SnowProfileStorePath { Join-Path $TestDrive 'profiles.json' }
+        Mock -ModuleName Snowplow Get-SnowLegacyProfileStorePath { Join-Path $TestDrive 'legacy-profiles.json' }
+    }
+
+    It 'reads the legacy Linux profile store only when the XDG store is absent' -Skip:(-not $IsLinux) {
+        $legacyPath = Join-Path $TestDrive 'legacy-profiles.json'
+        @([pscustomobject]@{ Name = 'legacy'; Instance = 'dev1'; Environment = 'Dev' }) |
+            ConvertTo-Json | Set-Content -Path $legacyPath -Encoding utf8
+
+        (Get-SnowplowProfile -Name legacy).Instance | Should -Be 'dev1'
+        Test-Path -LiteralPath (Join-Path $TestDrive 'profiles.json') | Should -BeFalse
+        Add-SnowplowProfile -Name new -Instance dev2
+        (Get-SnowplowProfile).Name | Should -Be @('legacy', 'new')
+        (Get-Content -Path $legacyPath -Raw) | Should -Not -Match '"new"'
+
+        '[]' | Set-Content -Path (Join-Path $TestDrive 'profiles.json') -Encoding utf8
+        Get-SnowplowProfile -Name legacy | Should -BeNullOrEmpty
+        (Get-Content -Path (Join-Path $TestDrive 'profiles.json') -Raw).Trim() | Should -Be '[]'
     }
 
     It 'adds, updates, lists, removes, and completes profiles' {
@@ -492,10 +514,8 @@ Describe 'Linux portability' {
         Mock -ModuleName Snowplow Get-SnowProfileStorePath { Join-Path $profileDirectory 'profiles.json' }
         Add-SnowplowProfile -Name linux -Instance dev1
         $profilePath = Join-Path $profileDirectory 'profiles.json'
-        [System.IO.File]::GetUnixFileMode($profileDirectory) |
-            Should -Be ([System.IO.UnixFileMode]::UserRead -bor [System.IO.UnixFileMode]::UserWrite -bor [System.IO.UnixFileMode]::UserExecute)
-        [System.IO.File]::GetUnixFileMode($profilePath) |
-            Should -Be ([System.IO.UnixFileMode]::UserRead -bor [System.IO.UnixFileMode]::UserWrite)
+        (& stat -c '%a' -- $profileDirectory) | Should -Be '700'
+        (& stat -c '%a' -- $profilePath) | Should -Be '600'
         [System.IO.File]::ReadAllBytes($profilePath)[0..2] | Should -Not -Be @(0xEF, 0xBB, 0xBF)
     }
 }

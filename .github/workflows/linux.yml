@@ -23,10 +23,13 @@ jobs:
           seen = {}
           collisions = []
           for path in filter(None, paths):
-              key = path.casefold()
-              if key in seen and seen[key] != path:
-                  collisions.append((seen[key], path))
-              seen[key] = path
+              parts = path.split("/")
+              for index in range(1, len(parts) + 1):
+                  prefix = "/".join(parts[:index])
+                  key = prefix.casefold()
+                  if key in seen and seen[key] != prefix:
+                      collisions.append((seen[key], prefix))
+                  seen[key] = prefix
           if collisions:
               for first, second in collisions:
                   print(f"Case-insensitive path collision: {first} / {second}", file=sys.stderr)

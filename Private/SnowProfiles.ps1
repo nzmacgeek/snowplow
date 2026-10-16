@@ -5,12 +5,27 @@ function Get-SnowProfileStorePath {
     Join-Path (Get-SnowplowDirectories).Config 'profiles.json'
 }
 
+function Get-SnowLegacyProfileStorePath {
+    [CmdletBinding()]
+    param()
+
+    Join-Path ([Environment]::GetFolderPath('UserProfile')) '.snowplow/profiles.json'
+}
+
 function Read-SnowProfileStore {
     [CmdletBinding()]
     param()
 
     $path = Get-SnowProfileStorePath
-    if (-not (Test-Path -LiteralPath $path)) { return @() }
+    if (-not (Test-Path -LiteralPath $path)) {
+        $legacyPath = Get-SnowLegacyProfileStorePath
+        if ((Get-SnowplowPlatform) -eq 'Linux' -and (Test-Path -LiteralPath $legacyPath)) {
+            $path = $legacyPath
+        }
+        else {
+            return @()
+        }
+    }
 
     $raw = Get-Content -LiteralPath $path -Raw -ErrorAction Stop
     if ([string]::IsNullOrWhiteSpace($raw)) { return @() }

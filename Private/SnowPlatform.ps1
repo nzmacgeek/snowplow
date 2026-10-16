@@ -66,10 +66,13 @@ function Protect-SnowplowPath {
 
     if ((Get-SnowplowPlatform) -ne 'Linux') { return }
     $mode = if ($Type -eq 'Directory') {
-        [System.IO.UnixFileMode]::UserRead -bor [System.IO.UnixFileMode]::UserWrite -bor [System.IO.UnixFileMode]::UserExecute
+        '700'
     }
     else {
-        [System.IO.UnixFileMode]::UserRead -bor [System.IO.UnixFileMode]::UserWrite
+        '600'
     }
-    [System.IO.File]::SetUnixFileMode($Path, $mode)
+    & chmod $mode -- $Path
+    if ($LASTEXITCODE -ne 0) {
+        throw [System.IO.IOException]::new("Could not restrict permissions on '$Path'.")
+    }
 }
