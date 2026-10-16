@@ -1,0 +1,173 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Rehearse the release without publishing to PowerShell Gallery.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Cache PowerShell modules
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: |
+            ~/.local/share/powershell/Modules
+            ~/Documents/PowerShell/Modules
+          key: psm-${{ runner.os }}-${{ hashFiles('.github/workflows/release.yml') }}
+          restore-keys: |
+            psm-${{ runner.os }}-
+
+      - name: Install pinned tooling
+        shell: pwsh
+        env:
+          PESTER_VERSION: 5.7.1
+          PSSCRIPTANALYZER_VERSION: 1.22.0
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          foreach ($module in @{ Pester = $env:PESTER_VERSION; PSScriptAnalyzer = $env:PSSCRIPTANALYZER_VERSION }.GetEnumerator()) {
+            if (-not (Get-Module -ListAvailable -Name $module.Key -RequiredVersion $module.Value -ErrorAction SilentlyContinue)) {
+              Install-Module -Name $module.Key -RequiredVersion $module.Value -Scope CurrentUser -Force -SkipPublisherCheck -Repository PSGallery
+            }
+          }
+
+      - name: Verify tag matches manifest version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = '${{ github.ref_name }}'
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $tag = '${{ github.event.inputs.tag_name }}'
+          }
+          if ([string]::IsNullOrWhiteSpace($tag) -or $tag -notmatch '^v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$') {
+            throw "Release tags must follow vX.Y.Z or vX.Y.Z-prerelease format. Got '$tag'."
+          }
+
+          $manifestVersion = (Import-PowerShellDataFile -Path ./Snowplow.psd1).ModuleVersion
+          $expected = $tag.TrimStart('v')
+          if ($manifestVersion -ne $expected) {
+            throw "Tag '$tag' does not match manifest ModuleVersion '$manifestVersion'."
+          }
+
+      - name: Lint and test module
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $analysis = Invoke-ScriptAnalyzer -Path $PWD -Recurse -Settings (Join-Path $PWD '.psscriptanalyzer.settings.psd1') -ErrorAction Continue
+          $errors = @($analysis | Where-Object Severity -eq 'Error')
+          if ($errors.Count -gt 0) {
+            $errors | Format-Table -AutoSize
+            throw 'PSScriptAnalyzer reported one or more errors.'
+          }
+
+          $resultsPath = Join-Path $PWD 'TestResults'
+          New-Item -ItemType Directory -Path $resultsPath -Force | Out-Null
+          Invoke-Pester -Path ./Tests -Tag Unit -CI -OutputFormat NUnitXml -OutputFile (Join-Path $resultsPath 'unit-results.xml')
+
+  publish:
+    name: Publish module
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    environment:
+      name: gallery
+      url: https://www.powershellgallery.com/packages/Snowplow
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Verify tag matches manifest version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = '${{ github.ref_name }}'
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $tag = '${{ github.event.inputs.tag_name }}'
+          }
+          if ([string]::IsNullOrWhiteSpace($tag) -or $tag -notmatch '^v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$') {
+            throw "Release tags must follow vX.Y.Z or vX.Y.Z-prerelease format. Got '$tag'."
+          }
+
+          $manifestVersion = (Import-PowerShellDataFile -Path ./Snowplow.psd1).ModuleVersion
+          $expected = $tag.TrimStart('v')
+          if ($manifestVersion -ne $expected) {
+            throw "Tag '$tag' does not match manifest ModuleVersion '$manifestVersion'."
+          }
+
+      - name: Build module package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $packageDir = Join-Path $PWD 'Snowplow'
+          if (Test-Path $packageDir) { Remove-Item -Recurse -Force $packageDir }
+          New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
+          Copy-Item -Path ./Snowplow.psd1, ./Snowplow.psm1 -Destination $packageDir -Force
+          Copy-Item -Path ./Public, ./Private -Destination $packageDir -Recurse -Force
+          Compress-Archive -Path (Join-Path $PWD 'Snowplow') -DestinationPath (Join-Path $PWD 'Snowplow.zip') -Force
+
+      - name: Publish to PowerShell Gallery
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true' }}
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:PSGALLERY_API_KEY)) {
+            throw 'PSGALLERY_API_KEY is required to publish the module.'
+          }
+          Publish-Module -Path ./Snowplow -NuGetApiKey $env:PSGALLERY_API_KEY -Repository PSGallery -Force
+
+      - name: Dry-run publish
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true' }}
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Publish-Module -Path ./Snowplow -NuGetApiKey $env:PSGALLERY_API_KEY -Repository PSGallery -Force -WhatIf
+
+      - name: Prepare release notes
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = '${{ github.ref_name }}'.TrimStart('v')
+          $body = Get-Content -Path ./CHANGELOG.md -Raw
+          $pattern = "(?ms)^##\s*(?:\[)?$([regex]::Escape($tag))(?:\])?\s*\r?\n(.*?)(?=\r?\n##\s+|\z)"
+          if ($body -notmatch $pattern) {
+            throw "No changelog section found for version '$tag'."
+          }
+          Set-Content -Path ./release-notes.md -Value ($Matches[1].Trim()) -Encoding utf8
+
+      - name: Create GitHub release
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true' }}
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: ./release-notes.md
+          files: ./Snowplow.zip
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
