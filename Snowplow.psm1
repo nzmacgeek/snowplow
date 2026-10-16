@@ -15,10 +15,15 @@ $private = @(Get-ChildItem -Path (Join-Path $PSScriptRoot 'Private') -Filter '*.
 $public = @(Get-ChildItem -Path (Join-Path $PSScriptRoot 'Public') -Filter '*.ps1' -ErrorAction SilentlyContinue)
 foreach ($file in $private + $public) { . $file.FullName }
 
+Set-Alias -Name snow -Value Get-SnowRecord
+Set-Alias -Name snowc -Value Connect-Snowplow
+Set-Alias -Name snowl -Value Get-SnowLink
+Set-Alias -Name snowo -Value Open-SnowRecord
+
 $adminFunctions = @(
     'Get-SnowRecord', 'New-SnowRecord', 'Set-SnowRecord', 'Remove-SnowRecord',
     'Get-SnowTable', 'Get-SnowDictionary', 'Get-SnowCI', 'Get-SnowCIRelationship',
     'Export-SnowRecord', 'Compare-SnowRecord', 'Where-SnowField', 'Add-SnowOrderBy', 'New-SnowRelativeDate'
 )
 $profileFunctions = @('Add-SnowplowProfile', 'Get-SnowplowProfile', 'Remove-SnowplowProfile', 'Set-SnowplowProfile')
-Export-ModuleMember -Function ((@($public.BaseName | Where-Object { $_ -notin @('Admin', 'Profiles') }) + $profileFunctions + $adminFunctions) | Sort-Object -Unique)
+Export-ModuleMember -Function ((@($public.BaseName | Where-Object { $_ -notin @('Admin', 'Profiles') }) + $profileFunctions + $adminFunctions) | Sort-Object -Unique) -Alias @('snow', 'snowc', 'snowl', 'snowo')

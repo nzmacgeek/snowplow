@@ -1,5 +1,7 @@
 BeforeAll {
     $script:Root = Split-Path $PSScriptRoot -Parent
+    $script:PreexistingConvenienceAliases = @('snow', 'snowc', 'snowl', 'snowo') |
+        Where-Object { Get-Alias -Name $_ -ErrorAction SilentlyContinue }
     Import-Module (Join-Path $Root 'Snowplow.psd1') -Force
 
     function script:New-HttpError {
@@ -92,11 +94,12 @@ Describe 'Snow query builder' {
 
 Describe 'Module' {
     It 'exports only public functions' {
-        (Get-Command -Module Snowplow).Name | Sort-Object |
+        (Get-Command -Module Snowplow -CommandType Function).Name | Sort-Object |
             Should -Be (@(
                 'Compare-SnowRecord', 'Connect-Snowplow', 'Disconnect-Snowplow', 'Export-SnowRecord',
                 'Get-SnowCI', 'Get-SnowCIRelationship', 'Get-SnowDictionary', 'Get-SnowRecord',
-                'Get-SnowTable', 'Get-SnowplowConfiguration', 'Get-SnowplowProfile', 'New-SnowRecord',
+                'Get-SnowTable', 'Get-SnowplowConfiguration', 'Get-SnowplowProfile', 'Get-SnowLink',
+                'Get-SnowplowPromptSegment', 'Open-SnowRecord', 'New-SnowRecord',
                 'New-SnowQuery', 'Where-SnowField', 'Add-SnowOrderBy', 'New-SnowRelativeDate',
                 'Remove-SnowRecord', 'Remove-SnowplowProfile', 'Set-SnowRecord', 'Set-SnowplowConfiguration',
                 'Add-SnowplowProfile', 'Set-SnowplowProfile'
@@ -104,6 +107,125 @@ Describe 'Module' {
     }
     It 'creates no global session variables' {
         Get-Variable -Scope Global -Name 'Snowplow*' -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
+    }
+    It 'exports convenience aliases that do not replace built-in aliases' {
+        $script:PreexistingConvenienceAliases | Should -BeNullOrEmpty
+        (Get-Alias snow).Definition | Should -Be 'Get-SnowRecord'
+        (Get-Alias snowc).Definition | Should -Be 'Connect-Snowplow'
+        (Get-Alias snowl).Definition | Should -Be 'Get-SnowLink'
+        (Get-Alias snowo).Definition | Should -Be 'Open-SnowRecord'
+    }
+}
+
+Describe 'CLI conveniences' {
+    BeforeEach {
+        $null = Connect-Snowplow -Instance dev1 -AuthMethod Basic -Credential $Cred -SkipValidation -WarningAction SilentlyContinue
+    }
+    AfterEach { Disconnect-Snowplow }
+
+    It 'builds URLs for forms, lists, special query values, and nav_to links' {
+        Get-SnowLink -Table incident -SysId $Sid |
+            Should -Be "https://dev1.service-now.com/incident.do?sys_id=$Sid"
+        Get-SnowLink -Table incident -Query 'short_description=a^b&c+?' |
+            Should -Be 'https://dev1.service-now.com/incident_list.do?sysparm_query=short_description%3Da%5Eb%26c%2B%3F'
+        Get-SnowLink -Table incident -SysId $Sid -UseNavTo |
+            Should -Be "https://dev1.service-now.com/nav_to.do?uri=incident.do%3Fsys_id%3D$Sid"
+    }
+
+    It 'formats links as URL, Markdown, or HTML' {
+        Mock -ModuleName Snowplow Get-SnowRecord { [pscustomobject]@{ sys_id = $Sid; number = 'INC001' } }
+        $url = "https://dev1.service-now.com/incident.do?sys_id=$Sid"
+        Get-SnowLink -Table incident -Number INC001 -Format Url | Should -Be $url
+        Get-SnowLink -Table incident -Number INC001 -Format Markdown |
+            Should -Be "[INC001]($url)"
+        Get-SnowLink -Table incident -Number INC001 -Format Html |
+            Should -Be "<a href=`"$url`">INC001</a>"
+    }
+
+    It 'uses the generated URL as the label when a pipeline record has no number' {
+        $record = [pscustomobject]@{ sys_id = $Sid }
+        $record.PSTypeNames.Insert(0, 'Snowplow.Record.incident')
+        $url = "https://dev1.service-now.com/incident.do?sys_id=$Sid"
+        $record | Get-SnowLink -Format Markdown | Should -Be "[$url]($url)"
+        $record | Get-SnowLink -Format Html |
+            Should -Be "<a href=`"$url`">$url</a>"
+    }
+
+    It 'resolves a record number and a table schema before building links' {
+        Mock -ModuleName Snowplow Get-SnowRecord { [pscustomobject]@{ sys_id = $Sid; number = 'INC001' } }
+        Get-SnowLink -Table incident -Number INC001 | Should -Be "https://dev1.service-now.com/incident.do?sys_id=$Sid"
+        Get-SnowLink -Table incident -Schema | Should -Be "https://dev1.service-now.com/sys_db_object.do?sys_id=$Sid"
+    }
+
+    It 'throws InvalidDataException when a lookup returns a malformed sys_id' {
+        Mock -ModuleName Snowplow Get-SnowRecord { [pscustomobject]@{ sys_id = 'invalid' } }
+        { Get-SnowLink -Table incident -Number INC001 } |
+            Should -Throw -ExceptionType ([System.IO.InvalidDataException])
+        { Get-SnowLink -Table incident -Schema } |
+            Should -Throw -ExceptionType ([System.IO.InvalidDataException])
+    }
+
+    It 'accepts pipeline records and returns URLs without opening a browser' {
+        $record = [pscustomobject]@{ sys_id = $Sid; number = 'INC001' }
+        $record.PSTypeNames.Insert(0, 'Snowplow.Record.incident')
+        $record | Get-SnowLink | Should -Be "https://dev1.service-now.com/incident.do?sys_id=$Sid"
+        $record | Open-SnowRecord -PassThru | Should -Be "https://dev1.service-now.com/incident.do?sys_id=$Sid"
+    }
+
+    It 'does not request bulk confirmation for a WhatIf batch' {
+        $records = foreach ($i in 1..6) {
+            $record = [pscustomobject]@{ sys_id = [string]([char](96 + $i)) * 32 }
+            $record.PSTypeNames.Insert(0, 'Snowplow.Record.incident')
+            $record
+        }
+        { $records | Open-SnowRecord -WhatIf } | Should -Not -Throw
+    }
+
+    It 'returns a link when clipboard support is unavailable or fails' {
+        Mock -ModuleName Snowplow Set-Clipboard { throw 'Clipboard is unavailable.' }
+        $warnings = @()
+        $url = Get-SnowLink -Table incident -SysId $Sid -Clipboard -WarningVariable warnings
+        $url | Should -Be "https://dev1.service-now.com/incident.do?sys_id=$Sid"
+        $warnings | Should -Match 'still returned'
+    }
+
+    It 'reports clearly when asked to open a browser in a headless Linux session' {
+        if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Linux)) {
+            $display = $env:DISPLAY
+            $waylandDisplay = $env:WAYLAND_DISPLAY
+            $ci = $env:CI
+            try {
+                Remove-Item Env:DISPLAY, Env:WAYLAND_DISPLAY -ErrorAction SilentlyContinue
+                Remove-Item Env:CI -ErrorAction SilentlyContinue
+                { Open-SnowRecord -Table incident } | Should -Throw '*No graphical browser session*'
+            }
+            finally {
+                if ($null -ne $display) { $env:DISPLAY = $display }
+                if ($null -ne $waylandDisplay) { $env:WAYLAND_DISPLAY = $waylandDisplay }
+                if ($null -ne $ci) { $env:CI = $ci }
+            }
+        }
+    }
+
+    It 'returns no prompt segment when disconnected and colors the active environment' {
+        Disconnect-Snowplow
+        Get-SnowplowPromptSegment | Should -BeNullOrEmpty
+        InModuleScope Snowplow {
+            $script:SnowplowSession = [pscustomobject]@{
+                BaseUri = [uri]'https://prod.service-now.com/'
+                Profile = 'prod'
+                Environment = 'Prod'
+            }
+        }
+        $segment = Get-SnowplowPromptSegment
+        $segment | Should -Match '\[snow:prod\]'
+        $segment | Should -Match ([regex]::Escape([string][char]27))
+        $segment | Should -Match ([regex]::Escape([string]$PSStyle.Foreground.Red))
+    }
+
+    It 'fails clearly when generating a URL without an active connection' {
+        Disconnect-Snowplow
+        { Get-SnowLink -Table incident } | Should -Throw '*Not connected*'
     }
 }
 
