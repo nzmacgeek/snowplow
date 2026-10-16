@@ -76,4 +76,33 @@ selects REST. Sdk requires Node.js and a Node-resolvable `now-sdk` module; when
 either is missing, the cmdlet reports a clear dependency message and recommends
 REST.
 
+### OAuth profile with SecretStore
+
+OAuth is the default authentication method. For repeat use, store the OAuth
+client ID and client secret as a `PSCredential` in a SecretManagement vault,
+then save only the secret name in a Snowplow profile:
+
+```powershell
+Install-Module Microsoft.PowerShell.SecretManagement -Scope CurrentUser
+Install-Module Microsoft.PowerShell.SecretStore -Scope CurrentUser
+Register-SecretVault -Name SnowplowVault -ModuleName Microsoft.PowerShell.SecretStore -DefaultVault
+
+# Enter the OAuth client secret at the secure password prompt.
+$oauthClient = Get-Credential -UserName '<oauth-client-id>' -Message 'OAuth client credentials'
+Set-Secret -Name SnowplowOAuth -Secret $oauthClient -Vault SnowplowVault
+
+Add-SnowplowProfile -Name dev -Instance dev12345 `
+    -ClientCredentialSecretName SnowplowOAuth -Vault SnowplowVault -Environment Dev
+Connect-Snowplow -Profile dev
+
+# Disconnect when finished.
+Disconnect-Snowplow
+```
+
+The credential's username is the OAuth client ID and its password is the client
+secret. Snowplow resolves the named secret from the specified vault when
+connecting; the profile file contains the secret reference, not the credential.
+SecretManagement and the SecretStore extension must be installed in the same
+PowerShell environment used to connect.
+
 Run the Pester tests with `Invoke-Pester ./Tests`.
