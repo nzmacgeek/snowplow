@@ -61,10 +61,24 @@ function New-SnowRecord {
         [ValidateSet('Rest', 'Sdk', 'Auto')][string]$Backend
     )
 
-    if ($PSCmdlet.ShouldProcess($Table, 'Create record')) {
-        $record = Invoke-SnowBackendRequest -Table $Table -Method POST -Body $Values -Backend $Backend
-        if ($record -is [pscustomobject]) { $record.PSTypeNames.Insert(0, "Snowplow.Record.$Table") }
-        $record
+    $previousConfirmPreference = $ConfirmPreference
+    try {
+        $session = Get-SnowSession
+        if ($session.Environment -eq 'Prod') {
+            if ($session.ReadOnly) {
+                throw [System.InvalidOperationException]::new("Writes are disabled for Prod profile '$($session.Profile)'. Reconnect with -AllowWrite to enable writes.")
+            }
+            $ConfirmPreference = 'Low'
+        }
+
+        if ($PSCmdlet.ShouldProcess($Table, 'Create record')) {
+            $record = Invoke-SnowBackendRequest -Table $Table -Method POST -Body $Values -Backend $Backend
+            if ($record -is [pscustomobject]) { $record.PSTypeNames.Insert(0, "Snowplow.Record.$Table") }
+            $record
+        }
+    }
+    finally {
+        $ConfirmPreference = $previousConfirmPreference
     }
 }
 
@@ -88,10 +102,24 @@ function Set-SnowRecord {
     )
 
     $method = if ($Replace) { 'PUT' } else { 'PATCH' }
-    if ($PSCmdlet.ShouldProcess("$Table/$SysId", 'Update record')) {
-        $record = Invoke-SnowBackendRequest -Table $Table -SysId $SysId -Method $method -Body $Values -Backend $Backend
-        if ($record -is [pscustomobject]) { $record.PSTypeNames.Insert(0, "Snowplow.Record.$Table") }
-        $record
+    $previousConfirmPreference = $ConfirmPreference
+    try {
+        $session = Get-SnowSession
+        if ($session.Environment -eq 'Prod') {
+            if ($session.ReadOnly) {
+                throw [System.InvalidOperationException]::new("Writes are disabled for Prod profile '$($session.Profile)'. Reconnect with -AllowWrite to enable writes.")
+            }
+            $ConfirmPreference = 'Low'
+        }
+
+        if ($PSCmdlet.ShouldProcess("$Table/$SysId", 'Update record')) {
+            $record = Invoke-SnowBackendRequest -Table $Table -SysId $SysId -Method $method -Body $Values -Backend $Backend
+            if ($record -is [pscustomobject]) { $record.PSTypeNames.Insert(0, "Snowplow.Record.$Table") }
+            $record
+        }
+    }
+    finally {
+        $ConfirmPreference = $previousConfirmPreference
     }
 }
 
@@ -111,8 +139,22 @@ function Remove-SnowRecord {
         [ValidateSet('Rest', 'Sdk', 'Auto')][string]$Backend
     )
 
-    if ($PSCmdlet.ShouldProcess("$Table/$SysId", 'Delete record')) {
-        $null = Invoke-SnowBackendRequest -Table $Table -SysId $SysId -Method DELETE -Backend $Backend
+    $previousConfirmPreference = $ConfirmPreference
+    try {
+        $session = Get-SnowSession
+        if ($session.Environment -eq 'Prod') {
+            if ($session.ReadOnly) {
+                throw [System.InvalidOperationException]::new("Writes are disabled for Prod profile '$($session.Profile)'. Reconnect with -AllowWrite to enable writes.")
+            }
+            $ConfirmPreference = 'Low'
+        }
+
+        if ($PSCmdlet.ShouldProcess("$Table/$SysId", 'Delete record')) {
+            $null = Invoke-SnowBackendRequest -Table $Table -SysId $SysId -Method DELETE -Backend $Backend
+        }
+    }
+    finally {
+        $ConfirmPreference = $previousConfirmPreference
     }
 }
 

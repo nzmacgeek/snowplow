@@ -12,10 +12,12 @@ function Connect-Snowplow {
     .EXAMPLE
         Connect-Snowplow -Instance dev12345 -ClientCredentialSecretName SnowClient -Vault MyVault
     #>
-    [CmdletBinding(DefaultParameterSetName = 'OAuth')]
+    [CmdletBinding()]
     [OutputType([pscustomobject])]
     param(
-        [Parameter(Mandatory, Position = 0)][string]$Instance,
+        [Parameter(Position = 0)][string]$Instance,
+        [ArgumentCompleter({ param($commandName, $parameterName, $wordToComplete) & (Get-Module Snowplow) { param($word) Get-SnowCompletionValue -Kind Profile -Word $word } $wordToComplete })]
+        [string]$Profile,
         [ValidateSet('OAuth', 'Basic')][string]$AuthMethod = 'OAuth',
         # OAuth client id (UserName) and client secret (Password).
         [pscredential]$ClientCredential,
@@ -25,8 +27,23 @@ function Connect-Snowplow {
         [string]$ClientCredentialSecretName,
         [string]$CredentialSecretName,
         [string]$Vault,
+        [switch]$AllowWrite,
         [switch]$SkipValidation
     )
+
+    $storedProfile = $null
+    if ($Profile) {
+        $storedProfile = Get-SnowStoredProfile -Name $Profile
+        if (-not $Instance) { $Instance = $storedProfile.Instance }
+        if (-not $PSBoundParameters.ContainsKey('AuthMethod')) { $AuthMethod = $storedProfile.AuthMethod }
+        if (-not $PSBoundParameters.ContainsKey('ClientCredentialSecretName') -and -not $PSBoundParameters.ContainsKey('ClientCredential')) { $ClientCredentialSecretName = $storedProfile.ClientCredentialSecretName }
+        if (-not $PSBoundParameters.ContainsKey('CredentialSecretName') -and -not $PSBoundParameters.ContainsKey('Credential')) { $CredentialSecretName = $storedProfile.CredentialSecretName }
+        if (-not $PSBoundParameters.ContainsKey('Vault')) { $Vault = $storedProfile.Vault }
+    }
+
+    if (-not $Instance) {
+        throw [System.ArgumentException]::new('Specify -Instance or -Profile.')
+    }
 
     $baseUri = Resolve-SnowInstanceUri -Instance $Instance
 
@@ -47,12 +64,37 @@ function Connect-Snowplow {
     if ($CredentialSecretName) { $Credential = & $fromVault $CredentialSecretName }
 
     if ($AuthMethod -eq 'Basic') {
-        if (-not $Credential) { throw [System.ArgumentException]::new('Basic auth requires -Credential or -CredentialSecretName.') }
+        if (-not $Credential) {
+            if ($Profile) {
+                $Credential = Get-Credential -Message "Enter the basic authentication credential for Snowplow profile '$Profile'"
+            }
+            else {
+                throw [System.ArgumentException]::new('Basic auth requires -Credential or -CredentialSecretName.')
+            }
+        }
         Write-Warning 'Basic authentication is deprecated for ServiceNow integrations. Prefer OAuth (-ClientCredential).'
     }
     else {
-        if (-not $ClientCredential) { throw [System.ArgumentException]::new('OAuth requires -ClientCredential or -ClientCredentialSecretName.') }
+        if (-not $ClientCredential) {
+            if ($Profile) {
+                $ClientCredential = Get-Credential -Message "Enter the OAuth client credential for Snowplow profile '$Profile'"
+            }
+            else {
+                throw [System.ArgumentException]::new('OAuth requires -ClientCredential or -ClientCredentialSecretName.')
+            }
+        }
         if ($Credential) { Write-Warning 'The OAuth password grant is legacy; prefer client credentials where your release supports it.' }
+    }
+
+    $environment = if ($storedProfile) { $storedProfile.Environment } else { $null }
+    $readOnly = $environment -eq 'Prod' -and -not $AllowWrite
+    if ($environment -eq 'Prod') {
+        if ($readOnly) {
+            Write-Warning "Connected to Prod profile '$Profile'. Snowplow is read-only by default; reconnect with -AllowWrite to enable writes."
+        }
+        else {
+            Write-Warning "Connected to Prod profile '$Profile'. Write operations require confirmation."
+        }
     }
 
     $session = [pscustomobject]@{
@@ -63,9 +105,18 @@ function Connect-Snowplow {
         AccessToken      = $null
         ExpiresAt        = [datetime]::MinValue
         ConnectedAt      = [datetime]::UtcNow
+        Profile          = $Profile
+        Environment      = $environment
+        DefaultBackend   = if ($storedProfile) { $storedProfile.DefaultBackend } else { $script:SnowplowConfig.DefaultBackend }
+        AllowWrite       = [bool]$AllowWrite
+        ReadOnly         = $readOnly
     }
 
     $previous = $script:SnowplowSession
+    $previousDefaultBackend = $script:SnowplowConfig.DefaultBackend
+    if ($storedProfile) {
+        $script:SnowplowConfig.DefaultBackend = $storedProfile.DefaultBackend
+    }
     $script:SnowplowSession = $session
     try {
         if (-not $SkipValidation) {
@@ -75,6 +126,7 @@ function Connect-Snowplow {
     }
     catch {
         $script:SnowplowSession = $previous
+        $script:SnowplowConfig.DefaultBackend = $previousDefaultBackend
         throw
     }
 
@@ -86,5 +138,9 @@ function Connect-Snowplow {
         Instance   = $baseUri.Host
         BaseUri    = $baseUri
         AuthMethod = $AuthMethod
+        Profile    = $Profile
+        Environment = $environment
+        DefaultBackend = $script:SnowplowConfig.DefaultBackend
+        ReadOnly   = $readOnly
     }
 }

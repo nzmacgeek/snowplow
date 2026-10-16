@@ -20,4 +20,5 @@ $adminFunctions = @(
     'Get-SnowTable', 'Get-SnowDictionary', 'Get-SnowCI', 'Get-SnowCIRelationship',
     'Export-SnowRecord', 'Compare-SnowRecord'
 )
-Export-ModuleMember -Function (@($public.BaseName | Where-Object { $_ -ne 'Admin' }) + $adminFunctions)
+$profileFunctions = @('Add-SnowplowProfile', 'Get-SnowplowProfile', 'Remove-SnowplowProfile', 'Set-SnowplowProfile')
+Export-ModuleMember -Function ((@($public.BaseName | Where-Object { $_ -notin @('Admin', 'Profiles') }) + $profileFunctions + $adminFunctions) | Sort-Object -Unique)
