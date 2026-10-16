@@ -67,15 +67,33 @@ function Invoke-SnowRequest {
                     $status = [int]$_.Exception.Response.StatusCode
                     $values = $null
                     if ($_.Exception.Response.Headers.TryGetValues('Retry-After', [ref]$values)) {
+                        $value = @($values)[0].Trim()
                         $parsed = 0.0
-                        if ([double]::TryParse(@($values)[0], [ref]$parsed)) { $retryAfter = $parsed }
+                        if ([double]::TryParse(
+                                $value,
+                                [Globalization.NumberStyles]::AllowDecimalPoint,
+                                [Globalization.CultureInfo]::InvariantCulture,
+                                [ref]$parsed
+                            ) -and $parsed -ge 0) {
+                            $retryAfter = $parsed
+                        }
+                        else {
+                            $retryDate = [DateTimeOffset]::MinValue
+                            $styles = [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal
+                            if ([DateTimeOffset]::TryParse($value, [Globalization.CultureInfo]::InvariantCulture, $styles, [ref]$retryDate)) {
+                                $retryAfter = [Math]::Max(0, ($retryDate - [DateTimeOffset]::UtcNow).TotalSeconds)
+                            }
+                        }
                     }
                 }
                 $retryable = $status -eq 429 -or ($status -ge 500 -and $Method -ne 'POST')
                 if (-not $retryable -or $attempt -ge $MaxRetries) {
                     $PSCmdlet.ThrowTerminatingError((ConvertTo-SnowErrorRecord -ErrorRecord $_ -Target $uri.AbsolutePath))
                 }
-                $delay = if ($null -ne $retryAfter) { [Math]::Min($retryAfter, 120) }
+                if ($null -ne $retryAfter -and $retryAfter -gt 120) {
+                    throw [System.InvalidOperationException]::new("Retry-After requests a $([Math]::Ceiling($retryAfter))-second wait, exceeding the 120-second maximum supported wait.")
+                }
+                $delay = if ($null -ne $retryAfter) { $retryAfter }
                 else { $BaseDelaySeconds * [Math]::Pow(2, $attempt) * (0.5 + [Random]::Shared.NextDouble() / 2) }
                 Write-Verbose "HTTP $status from $($uri.AbsolutePath); retry $($attempt + 1)/$MaxRetries in $([Math]::Round($delay, 2))s."
                 Start-SnowSleep -Seconds $delay

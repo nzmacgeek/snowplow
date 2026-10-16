@@ -20,6 +20,6 @@ function Resolve-SnowInstanceUri {
         $uri.Host -notmatch '^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$') {
         throw [System.ArgumentException]::new("'$Instance' is not a valid ServiceNow instance name or URL.")
     }
-    # Drop any path/query/userinfo: keep scheme, host and port only.
-    [uri]::new($uri.GetLeftPart([System.UriPartial]::Authority))
+    # Rebuild authority to omit any embedded userinfo.
+    [System.UriBuilder]::new($uri.Scheme, $uri.Host, $uri.Port).Uri
 }

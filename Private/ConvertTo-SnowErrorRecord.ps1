@@ -16,7 +16,7 @@ function ConvertTo-SnowErrorRecord {
     if ($ex.PSObject.Properties['Response'] -and $ex.Response) { $status = [int]$ex.Response.StatusCode }
 
     $message = $null; $detail = $null
-    $body = $ErrorRecord.ErrorDetails.Message
+    $body = if ($ErrorRecord.ErrorDetails) { $ErrorRecord.ErrorDetails.Message } else { $null }
     if ($body) {
         try {
             $parsed = $body | ConvertFrom-Json -ErrorAction Stop

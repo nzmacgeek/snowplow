@@ -31,6 +31,7 @@ Describe 'Resolve-SnowInstanceUri' {
         @{ In = 'dev123'; Out = 'https://dev123.service-now.com/' }
         @{ In = 'dev123.service-now.com'; Out = 'https://dev123.service-now.com/' }
         @{ In = 'https://dev123.service-now.com/some/path?x=1'; Out = 'https://dev123.service-now.com/' }
+        @{ In = ('https://' + 'user' + ':' + 'pass@dev123.service-now.com/some/path'); Out = 'https://dev123.service-now.com/' }
     ) {
         InModuleScope Snowplow -Parameters $_ { (Resolve-SnowInstanceUri $In).AbsoluteUri | Should -Be $Out }
     }
@@ -150,6 +151,25 @@ Describe 'Invoke-SnowRequest' {
         Should -Invoke -ModuleName Snowplow Start-SnowSleep -Times 1 -ParameterFilter { $Seconds -eq 7 }
     }
 
+    It 'retries 429 honouring an HTTP-date Retry-After' {
+        $script:calls = 0
+        $retryAt = [DateTimeOffset]::UtcNow.AddSeconds(30).ToString('R', [Globalization.CultureInfo]::InvariantCulture)
+        Mock -ModuleName Snowplow Invoke-RestMethod {
+            $script:calls++
+            if ($script:calls -eq 1) { throw (New-HttpError 429 '' @{ 'Retry-After' = $retryAt }) }
+            [pscustomobject]@{ result = @([pscustomobject]@{ ok = 1 }) }
+        }
+        $null = InModuleScope Snowplow { Invoke-SnowRequest -Table incident }
+        Should -Invoke -ModuleName Snowplow Start-SnowSleep -Times 1 -ParameterFilter { $Seconds -gt 0 -and $Seconds -le 30 }
+    }
+
+    It 'fails explicitly when Retry-After exceeds the supported wait' {
+        Mock -ModuleName Snowplow Invoke-RestMethod { throw (New-HttpError 429 '' @{ 'Retry-After' = '121' }) }
+        $err = InModuleScope Snowplow { try { Invoke-SnowRequest -Table incident } catch { $_ } }
+        $err.Exception.Message | Should -BeLike '*exceeding the 120-second maximum supported wait*'
+        Should -Invoke -ModuleName Snowplow Start-SnowSleep -Times 0 -Exactly
+    }
+
     It 'retries 503 with exponential backoff and gives up with a parsed error' {
         Mock -ModuleName Snowplow Invoke-RestMethod { throw (New-HttpError 503 '{"error":{"message":"Down","detail":"maintenance"},"status":"failure"}') }
         $err = InModuleScope Snowplow {
@@ -169,6 +189,13 @@ Describe 'Invoke-SnowRequest' {
         Should -Invoke -ModuleName Snowplow Invoke-RestMethod -Times 1 -Exactly
         $err.CategoryInfo.Category | Should -Be 'ObjectNotFound'
         $err.Exception.Message | Should -BeLike '*No Record found*'
+    }
+
+    It 'maps an HTTP error without ErrorDetails under strict mode' {
+        Mock -ModuleName Snowplow Invoke-RestMethod { throw (New-HttpError 404 '') }
+        $err = InModuleScope Snowplow { try { Invoke-SnowRequest -Table incident -SysId ('b' * 32) } catch { $_ } }
+        $err.FullyQualifiedErrorId | Should -BeLike 'Snowplow.Http404*'
+        $err.Exception.Message | Should -BeLike '*HTTP 404*'
     }
 
     It 'does not retry POST on 5xx (non-idempotent)' {
@@ -196,6 +223,18 @@ Describe 'Invoke-SnowRequest' {
         $null = Connect-Snowplow -Instance dev1 -ClientCredential $Client -SkipValidation
         InModuleScope Snowplow { Invoke-SnowRequest -Table incident | Out-Null; Invoke-SnowRequest -Table incident | Out-Null }
         $script:tokens | Should -Be 2   # 30s lifetime is inside the 60s refresh window
+    }
+
+    It 'uses the default OAuth token lifetime when expires_in is missing' {
+        Mock -ModuleName Snowplow Invoke-RestMethod { [pscustomobject]@{ access_token = 'tok' } } -ParameterFilter { $Uri.AbsolutePath -eq '/oauth_token.do' }
+        $token = InModuleScope Snowplow -Parameters @{ Client = $Client } {
+            Request-SnowOAuthToken -Session ([pscustomobject]@{
+                ClientCredential = $Client
+                Credential = $null
+                BaseUri = [uri]'https://dev1.service-now.com/'
+            })
+        }
+        [Math]::Abs(($token.ExpiresAt - [DateTime]::UtcNow.AddSeconds(1800)).TotalSeconds) | Should -BeLessThan 2
     }
 }
 

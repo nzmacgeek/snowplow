@@ -29,12 +29,14 @@ function Request-SnowOAuthToken {
     }
     finally { $form = $null }
 
-    if (-not $resp.access_token) {
+    $accessToken = $resp.PSObject.Properties['access_token']
+    if (-not $accessToken -or -not $accessToken.Value) {
         throw [System.InvalidOperationException]::new('OAuth token response did not contain an access_token.')
     }
-    $lifetime = if ($resp.expires_in) { [int]$resp.expires_in } else { 1800 }
+    $expiresIn = $resp.PSObject.Properties['expires_in']
+    $lifetime = if ($expiresIn -and $expiresIn.Value) { [int]$expiresIn.Value } else { 1800 }
     [pscustomobject]@{
-        AccessToken = ConvertTo-SecureString -String ([string]$resp.access_token) -AsPlainText -Force
+        AccessToken = ConvertTo-SecureString -String ([string]$accessToken.Value) -AsPlainText -Force
         ExpiresAt   = [datetime]::UtcNow.AddSeconds($lifetime)
     }
 }
