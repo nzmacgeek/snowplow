@@ -24,6 +24,7 @@ function Add-SnowplowProfile {
         throw [System.ArgumentException]::new("Snowplow profile '$Name' already exists.")
     }
 
+    $Instance = Resolve-SnowProfileInstance -Instance $Instance
     $profile = [pscustomobject]@{
         PSTypeName                 = 'Snowplow.Profile'
         Name                       = $Name
@@ -134,6 +135,7 @@ function Set-SnowplowProfile {
     if (-not $profile.Instance) {
         throw [System.ArgumentException]::new('An instance is required when creating a new Snowplow profile.')
     }
+    $profile.Instance = Resolve-SnowProfileInstance -Instance $profile.Instance
 
     if ($PSCmdlet.ShouldProcess($Name, 'Set Snowplow profile')) {
         if ($current) {

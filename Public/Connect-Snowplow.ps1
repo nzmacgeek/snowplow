@@ -36,8 +36,8 @@ function Connect-Snowplow {
         $storedProfile = Get-SnowStoredProfile -Name $Profile
         if (-not $Instance) { $Instance = $storedProfile.Instance }
         if (-not $PSBoundParameters.ContainsKey('AuthMethod')) { $AuthMethod = $storedProfile.AuthMethod }
-        if (-not $PSBoundParameters.ContainsKey('ClientCredentialSecretName')) { $ClientCredentialSecretName = $storedProfile.ClientCredentialSecretName }
-        if (-not $PSBoundParameters.ContainsKey('CredentialSecretName')) { $CredentialSecretName = $storedProfile.CredentialSecretName }
+        if (-not $PSBoundParameters.ContainsKey('ClientCredentialSecretName') -and -not $PSBoundParameters.ContainsKey('ClientCredential')) { $ClientCredentialSecretName = $storedProfile.ClientCredentialSecretName }
+        if (-not $PSBoundParameters.ContainsKey('CredentialSecretName') -and -not $PSBoundParameters.ContainsKey('Credential')) { $CredentialSecretName = $storedProfile.CredentialSecretName }
         if (-not $PSBoundParameters.ContainsKey('Vault')) { $Vault = $storedProfile.Vault }
     }
 

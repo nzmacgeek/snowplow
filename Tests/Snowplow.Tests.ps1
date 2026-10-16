@@ -147,6 +147,20 @@ Describe 'Connect-Snowplow' {
         Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -ParameterFilter { $Method -eq 'POST' -and $Body.short_description -eq 'Allowed' }
         Remove-Item function:global:Get-Secret
     }
+
+    It 'uses explicit profile credentials instead of inherited secret references' {
+        Mock -ModuleName Snowplow Get-SnowProfileStorePath { Join-Path $TestDrive 'profiles.json' }
+        Remove-Item (Join-Path $TestDrive 'profiles.json') -ErrorAction SilentlyContinue
+        Add-SnowplowProfile -Name dev -Instance dev1 -ClientCredentialSecretName ClientSecret -CredentialSecretName UserSecret
+        Remove-Item function:global:Get-Secret -ErrorAction SilentlyContinue
+
+        $null = Connect-Snowplow -Profile dev -ClientCredential $Client -Credential $Cred -SkipValidation -WarningAction SilentlyContinue
+
+        InModuleScope Snowplow -Parameters @{ Client = $Client; Cred = $Cred } {
+            $script:SnowplowSession.ClientCredential.UserName | Should -Be 'cid'
+            $script:SnowplowSession.Credential.UserName | Should -Be 'user'
+        }
+    }
 }
 
 Describe 'Snowplow profiles' {
@@ -160,7 +174,7 @@ Describe 'Snowplow profiles' {
         Add-SnowplowProfile -Name prod -Instance prod1 -Environment Prod
 
         $profile = Get-SnowplowProfile -Name dev
-        $profile.Instance | Should -Be 'dev1'
+        $profile.Instance | Should -Be 'https://dev1.service-now.com/'
         $profile.DefaultBackend | Should -Be 'Sdk'
         $profile.Environment | Should -Be 'Test'
         (Get-SnowplowProfile).Name | Should -Be @('dev', 'prod')
@@ -170,11 +184,48 @@ Describe 'Snowplow profiles' {
 
         Remove-SnowplowProfile -Name prod -Confirm:$false
         (Get-SnowplowProfile).Name | Should -Be @('dev')
+        Remove-SnowplowProfile -Name dev -Confirm:$false
+        (Get-SnowplowProfile) | Should -BeNullOrEmpty
+        (Get-Content (Join-Path $TestDrive 'profiles.json') -Raw).Trim() | Should -Be '[]'
     }
 
     It 'fails clearly when the profile store is corrupted' {
         Set-Content -Path (Join-Path $TestDrive 'profiles.json') -Value '{bad json' -Encoding utf8
         { Get-SnowplowProfile } | Should -Throw '*corrupted*'
+    }
+
+    It 'rejects missing or invalid environment metadata in the profile store' {
+        foreach ($profile in @(
+            [pscustomobject]@{ Name = 'prod'; Instance = 'prod1' },
+            [pscustomobject]@{ Name = 'prod'; Instance = 'prod1'; Environment = 'Prdo' },
+            [pscustomobject]@{ Name = 'prod'; Instance = 'prod1'; Environment = '' }
+        )) {
+            $profile | ConvertTo-Json | Set-Content -Path (Join-Path $TestDrive 'profiles.json') -Encoding utf8
+            { Get-SnowplowProfile } | Should -Throw '*corrupted*'
+        }
+    }
+
+    It 'normalizes instance URLs before persisting profile data' {
+        Remove-Item (Join-Path $TestDrive 'profiles.json') -ErrorAction SilentlyContinue
+        $credentialedInstance = 'https://' + 'sample-user' + ':' + 'sample-password@dev1.service-now.com/path?token=sample-token'
+        $profile = Add-SnowplowProfile -Name dev -Instance $credentialedInstance -PassThru
+
+        $profile.Instance | Should -Be 'https://dev1.service-now.com/'
+        (Get-Content (Join-Path $TestDrive 'profiles.json') -Raw) | Should -Not -Match 'sample-user|sample-password|sample-token'
+
+        $updatedInstance = 'https://' + 'other-user' + ':' + 'other-password@dev2.service-now.com/path?access_token=other-token'
+        Set-SnowplowProfile -Name dev -Instance $updatedInstance
+        $stored = Get-Content (Join-Path $TestDrive 'profiles.json') -Raw
+        $stored | Should -Match 'https://dev2.service-now.com/'
+        $stored | Should -Not -Match 'other-user|other-password|other-token'
+
+        $errorMessage = try {
+            Add-SnowplowProfile -Name invalid -Instance ('http://' + 'sample-user' + ':' + 'sample-password@dev3.service-now.com') -ErrorAction Stop
+        }
+        catch {
+            $_.Exception.Message
+        }
+        $errorMessage | Should -Not -Match 'sample-user|sample-password|dev3'
     }
 }
 
