@@ -41,7 +41,8 @@ jobs:
           }
 
           $uri = "https://$($env:SNOW_INSTANCE).service-now.com/"
-          $credentials = [System.Net.NetworkCredential]::new($env:SNOW_USERNAME, $env:SNOW_PASSWORD)
+          $securePassword = ConvertTo-SecureString $env:SNOW_PASSWORD -AsPlainText -Force
+          $credentials = [pscredential]::new($env:SNOW_USERNAME, $securePassword)
           try {
             $response = Invoke-WebRequest -Uri $uri -Credential $credentials -UseBasicParsing -SkipHttpErrorCheck
             if ($response.StatusCode -eq 200) {
@@ -66,4 +67,13 @@ jobs:
           SNOW_PASSWORD: ${{ secrets.SNOW_PASSWORD }}
         run: |
           $ErrorActionPreference = 'Stop'
-          Invoke-Pester -Path ./Tests -Tag Integration -CI
+          $configuration = New-PesterConfiguration
+          $configuration.Run.Path = './Tests'
+          $configuration.Filter.Tag = 'Integration'
+          $configuration.Run.Exit = $true
+          $configuration.Run.PassThru = $true
+          $result = Invoke-Pester -Configuration $configuration
+          $executedCount = $result.PassedCount + $result.FailedCount + $result.SkippedCount
+          if ($executedCount -eq 0) {
+            throw 'No Integration-tagged tests were discovered.'
+          }

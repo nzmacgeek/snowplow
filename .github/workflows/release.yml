@@ -48,7 +48,8 @@ jobs:
           }
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           foreach ($module in @{ Pester = $env:PESTER_VERSION; PSScriptAnalyzer = $env:PSSCRIPTANALYZER_VERSION }.GetEnumerator()) {
-            if (-not (Get-Module -ListAvailable -Name $module.Key -RequiredVersion $module.Value -ErrorAction SilentlyContinue)) {
+            $moduleSpecification = @{ ModuleName = $module.Key; RequiredVersion = $module.Value }
+            if (-not (Get-Module -ListAvailable -FullyQualifiedName $moduleSpecification -ErrorAction SilentlyContinue)) {
               Install-Module -Name $module.Key -RequiredVersion $module.Value -Scope CurrentUser -Force -SkipPublisherCheck -Repository PSGallery
             }
           }
@@ -89,7 +90,17 @@ jobs:
 
           $resultsPath = Join-Path $PWD 'TestResults'
           New-Item -ItemType Directory -Path $resultsPath -Force | Out-Null
-          Invoke-Pester -Path ./Tests -Tag Unit -CI -OutputFormat NUnitXml -OutputFile (Join-Path $resultsPath 'unit-results.xml')
+          $configuration = New-PesterConfiguration
+          $configuration.Run.Path = './Tests'
+          $configuration.Filter.Tag = 'Unit'
+          $configuration.Run.Exit = $true
+          $configuration.TestResult.Enabled = $true
+          $configuration.TestResult.OutputFormat = 'NUnitXml'
+          $configuration.TestResult.OutputPath = Join-Path $resultsPath 'unit-tests.xml'
+          $configuration.CodeCoverage.Enabled = $true
+          $configuration.CodeCoverage.Path = Get-ChildItem -Path ./Public, ./Private -Filter '*.ps1' -Recurse | Select-Object -ExpandProperty FullName
+          $configuration.CodeCoverage.OutputPath = Join-Path $resultsPath 'coverage.xml'
+          Invoke-Pester -Configuration $configuration
 
   publish:
     name: Publish module
@@ -126,6 +137,18 @@ jobs:
             throw "Tag '$tag' does not match manifest Prerelease '$($manifest.PrivateData.PSData.Prerelease)'."
           }
 
+      - name: Prepare release notes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = '${{ github.ref_name }}'.TrimStart('v')
+          $body = Get-Content -Path ./CHANGELOG.md -Raw
+          $pattern = "(?ms)^##\s*(?:\[)?$([regex]::Escape($tag))(?:\])?\s*\r?\n(.*?)(?=\r?\n##\s+|\z)"
+          if ($body -notmatch $pattern) {
+            throw "No changelog section found for version '$tag'."
+          }
+          Set-Content -Path ./release-notes.md -Value ($Matches[1].Trim()) -Encoding utf8
+
       - name: Build module package
         shell: pwsh
         run: |
@@ -157,19 +180,6 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Publish-Module -Path ./Snowplow -NuGetApiKey $env:PSGALLERY_API_KEY -Repository PSGallery -Force -WhatIf
-
-      - name: Prepare release notes
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true' }}
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $tag = '${{ github.ref_name }}'.TrimStart('v')
-          $body = Get-Content -Path ./CHANGELOG.md -Raw
-          $pattern = "(?ms)^##\s*(?:\[)?$([regex]::Escape($tag))(?:\])?\s*\r?\n(.*?)(?=\r?\n##\s+|\z)"
-          if ($body -notmatch $pattern) {
-            throw "No changelog section found for version '$tag'."
-          }
-          Set-Content -Path ./release-notes.md -Value ($Matches[1].Trim()) -Encoding utf8
 
       - name: Create GitHub release
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true' }}
