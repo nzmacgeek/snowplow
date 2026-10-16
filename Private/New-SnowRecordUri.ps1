@@ -46,6 +46,9 @@ function New-SnowRecordUri {
         if (-not $definition -or -not $definition[0].sys_id) {
             throw [System.Management.Automation.ItemNotFoundException]::new("ServiceNow table '$Table' was not found.")
         }
+        if ([string]$definition[0].sys_id -notmatch '^[0-9a-fA-F]{32}$') {
+            throw [System.InvalidDataException]::new("ServiceNow returned an invalid sys_id for table '$Table'.")
+        }
         $path = "sys_db_object.do?sys_id=$($definition[0].sys_id)"
     }
     elseif ($Number) {
@@ -53,6 +56,9 @@ function New-SnowRecordUri {
         $record = @(Get-SnowRecord -Table $Table -Query $numberQuery -Fields sys_id, number -Limit 1)
         if (-not $record -or -not $record[0].sys_id) {
             throw [System.Management.Automation.ItemNotFoundException]::new("No $Table record with number '$Number' was found.")
+        }
+        if ([string]$record[0].sys_id -notmatch '^[0-9a-fA-F]{32}$') {
+            throw [System.InvalidDataException]::new("ServiceNow returned an invalid sys_id for $Table record '$Number'.")
         }
         $path = "$Table.do?sys_id=$($record[0].sys_id)"
     }

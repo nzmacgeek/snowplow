@@ -155,6 +155,32 @@ Describe 'CLI conveniences' {
         $record | Open-SnowRecord -PassThru | Should -Be "https://dev1.service-now.com/incident.do?sys_id=$Sid"
     }
 
+    It 'returns a link when clipboard support is unavailable or fails' {
+        Mock -ModuleName Snowplow Set-Clipboard { throw 'Clipboard is unavailable.' }
+        $warnings = @()
+        $url = Get-SnowLink -Table incident -SysId $Sid -Clipboard -WarningVariable warnings
+        $url | Should -Be "https://dev1.service-now.com/incident.do?sys_id=$Sid"
+        $warnings | Should -Match 'still returned'
+    }
+
+    It 'reports clearly when asked to open a browser in a headless Linux session' {
+        if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Linux)) {
+            $display = $env:DISPLAY
+            $waylandDisplay = $env:WAYLAND_DISPLAY
+            $ci = $env:CI
+            try {
+                Remove-Item Env:DISPLAY, Env:WAYLAND_DISPLAY -ErrorAction SilentlyContinue
+                Remove-Item Env:CI -ErrorAction SilentlyContinue
+                { Open-SnowRecord -Table incident } | Should -Throw '*No graphical browser session*'
+            }
+            finally {
+                if ($null -ne $display) { $env:DISPLAY = $display }
+                if ($null -ne $waylandDisplay) { $env:WAYLAND_DISPLAY = $waylandDisplay }
+                if ($null -ne $ci) { $env:CI = $ci }
+            }
+        }
+    }
+
     It 'returns no prompt segment when disconnected and colors the active environment' {
         Disconnect-Snowplow
         Get-SnowplowPromptSegment | Should -BeNullOrEmpty
@@ -168,6 +194,7 @@ Describe 'CLI conveniences' {
         $segment = Get-SnowplowPromptSegment
         $segment | Should -Match '\[snow:prod\]'
         $segment | Should -Match ([regex]::Escape([string][char]27))
+        $segment | Should -Match ([regex]::Escape([string]$PSStyle.Foreground.Red))
     }
 
     It 'fails clearly when generating a URL without an active connection' {
