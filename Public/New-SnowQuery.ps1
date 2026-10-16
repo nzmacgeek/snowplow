@@ -5,7 +5,7 @@ function ConvertTo-SnowQueryValue {
     if ($Value -is [bool]) { $text = $Value.ToString().ToLowerInvariant() }
     elseif ($Value -is [IFormattable]) { $text = $Value.ToString($null, [Globalization.CultureInfo]::InvariantCulture) }
     else { $text = [string]$Value }
-    $text.Replace('\', '\\').Replace('^', '\^')
+    $text.Replace('^', '^^')
 }
 
 function ConvertTo-SnowQueryCondition {
@@ -78,6 +78,7 @@ function New-SnowQuery {
             $join = $Joiner
             if ($condition -is [System.Collections.IDictionary] -and $condition.Contains('Operator')) {
                 $operator = [string]$condition.Operator
+                $value = $null
                 if ($condition.Contains('Value')) { $value = $condition.Value }
                 if ($condition.Contains('Joiner')) { $join = [string]$condition.Joiner }
             }
@@ -86,7 +87,7 @@ function New-SnowQuery {
             }
             $encoded = ConvertTo-SnowQueryCondition -Field ([string]$field) -Operator $operator -Value $value
             if ($terms.Count -gt 0) {
-                $prefix = if ($join -eq 'AND') { '^' } else { "^$join" }
+                $prefix = if ($join -eq 'AND') { '^' } else { "^$($join.ToUpperInvariant())" }
                 $terms.Add($prefix)
             }
             $terms.Add($encoded)
@@ -125,7 +126,7 @@ function Where-SnowField {
     process {
         $condition = ConvertTo-SnowQueryCondition -Field $Field -Operator $Operator -Value $Value
         $prefix = if ($Query) {
-            if ($Joiner -eq 'AND') { '^' } else { "^$Joiner" }
+            if ($Joiner -eq 'AND') { '^' } else { "^$($Joiner.ToUpperInvariant())" }
         }
         else { '' }
         "$Query$prefix$condition"
@@ -192,5 +193,6 @@ function New-SnowRelativeDate {
         '^Months?$' { 'months'; break }
         '^Years?$' { 'years'; break }
     }
-    "javascript:gs.$($unitName)Ago$Boundary($Last)"
+    $boundaryName = if ($Boundary -ieq 'Start') { 'Start' } else { 'End' }
+    "javascript:gs.$($unitName)Ago$boundaryName($Last)"
 }

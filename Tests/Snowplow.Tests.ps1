@@ -20,15 +20,22 @@ Describe 'Snow query builder' {
     It 'builds known encoded queries from condition hashtables' {
         $conditions = [ordered]@{
             name = @{ Operator = 'STARTSWITH'; Value = 'INC' }
-            priority = @{ Operator = 'IN'; Value = @('1', '2'); Joiner = 'OR' }
-            active = @{ Operator = '='; Value = $false; Joiner = 'NQ' }
+            priority = @{ Operator = 'IN'; Value = @('1', '2'); Joiner = 'or' }
+            active = @{ Operator = '='; Value = $false; Joiner = 'nq' }
         }
         New-SnowQuery -Conditions $conditions | Should -Be 'nameSTARTSWITHINC^ORpriorityIN1,2^NQactive=false'
+    }
+
+    It 'normalizes lowercase joiners supplied to the query builder' {
+        New-SnowQuery -Conditions ([ordered]@{ active = 'true'; priority = '1' }) -Joiner or |
+            Should -Be 'active=true^ORpriority=1'
     }
 
     It 'supports operators without values and validates list operands' {
         New-SnowQuery -Conditions @{ short_description = @{ Operator = 'ISEMPTY' } } |
             Should -Be 'short_descriptionISEMPTY'
+        { New-SnowQuery -Conditions @{ priority = @{ Operator = '=' } } } |
+            Should -Throw '*A value is required*'
         New-SnowQuery -Conditions @{ priority = @{ Operator = 'BETWEEN'; Value = @(1, 3) } } |
             Should -Be 'priorityBETWEEN1@3'
         { New-SnowQuery -Conditions @{ priority = @{ Operator = 'BETWEEN'; Value = @(1) } } } |
@@ -48,7 +55,9 @@ Describe 'Snow query builder' {
 
     It 'escapes query delimiters in values without altering other characters' {
         $query = New-SnowQuery -Conditions @{ short_description = 'a^b\c &+?' }
-        $query | Should -Be 'short_description=a\^b\\c &+?'
+        $query | Should -Be 'short_description=a^^b\c &+?'
+        New-SnowQuery -Conditions @{ short_description = 'x^NQactive=true' } |
+            Should -Be 'short_description=x^^NQactive=true'
     }
 
     It 'builds and extends fluent queries with sorting and relative dates' {
@@ -57,7 +66,12 @@ Describe 'Snow query builder' {
             Where-SnowField sys_created_on -Operator '>' -Value (New-SnowRelativeDate -Last 7 -Unit Days) |
             Add-SnowOrderBy sys_created_on -Descending
         $query | Should -Be 'active=true^sys_created_on>javascript:gs.daysAgoStart(7)^ORDERBYDESCsys_created_on'
-        (New-SnowRelativeDate -Last 2 -Unit Weeks -Boundary End) | Should -Be 'javascript:gs.weeksAgoEnd(2)'
+        (New-SnowRelativeDate -Last 2 -Unit Weeks -Boundary end) | Should -Be 'javascript:gs.weeksAgoEnd(2)'
+    }
+
+    It 'normalizes lowercase fluent joiners' {
+        'active=true' | Where-SnowField priority -Value 1 -Joiner or |
+            Should -Be 'active=true^ORpriority=1'
     }
 
     It 'completes fields in query-builder commands from the schema cache' {
