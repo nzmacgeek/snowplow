@@ -7,16 +7,21 @@
     PowerShellVersion     = '7.2'
     CompatiblePSEditions  = @('Core')
     FunctionsToExport     = @(
-        'Add-SnowplowProfile', 'Connect-Snowplow', 'Disconnect-Snowplow', 'Get-SnowplowConfiguration', 'Get-SnowplowProfile',
-        'Get-SnowRecord', 'New-SnowRecord', 'Set-SnowRecord', 'Remove-SnowRecord',
-        'Get-SnowTable', 'Get-SnowDictionary', 'Get-SnowCI', 'Get-SnowCIRelationship',
-        'Export-SnowRecord', 'Compare-SnowRecord', 'New-SnowQuery', 'Find-SnowField',
-        'Add-SnowOrderBy', 'New-SnowRelativeDate', 'Remove-SnowplowProfile',
-        'Set-SnowplowConfiguration', 'Set-SnowplowProfile', 'Get-SnowLink', 'Open-SnowRecord',
-        'Get-SnowplowPromptSegment'
+        'Add-SnowOrderBy', 'Add-SnowplowProfile', 'Compare-SnowRecord', 'Connect-Snowplow',
+        'Disconnect-Snowplow', 'Export-SnowRecord', 'Find-SnowField', 'Get-SnowCI',
+        'Get-SnowCIRelationship', 'Get-SnowDictionary', 'Get-SnowLink',
+        'Get-SnowRecord', 'Get-SnowTable', 'Get-SnowplowConfiguration',
+        'Get-SnowplowProfile', 'Get-SnowplowPromptSegment', 'New-SnowQuery',
+        'New-SnowRecord', 'New-SnowRelativeDate', 'Open-SnowRecord',
+        'Remove-SnowRecord', 'Remove-SnowplowProfile', 'Set-SnowRecord',
+        'Set-SnowplowConfiguration', 'Set-SnowplowProfile'
     )
     CmdletsToExport       = @()
     VariablesToExport     = @()
     AliasesToExport       = @('snow', 'snowc', 'snowl', 'snowo', 'Where-SnowField')
-    PrivateData           = @{ PSData = @{ Tags = @('ServiceNow', 'REST', 'Admin') } }
+    PrivateData           = @{ PSData = @{
+            Tags = @('ServiceNow', 'REST', 'Admin')
+            Prerelease = ''
+        }
+    }
 }

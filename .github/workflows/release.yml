@@ -65,10 +65,15 @@ jobs:
             throw "Release tags must follow vX.Y.Z or vX.Y.Z-prerelease format. Got '$tag'."
           }
 
-          $manifestVersion = (Import-PowerShellDataFile -Path ./Snowplow.psd1).ModuleVersion
-          $expected = $tag.TrimStart('v')
-          if ($manifestVersion -ne $expected) {
-            throw "Tag '$tag' does not match manifest ModuleVersion '$manifestVersion'."
+          $manifest = Import-PowerShellDataFile -Path ./Snowplow.psd1
+          $tagVersion = $tag.TrimStart('v')
+          $expectedVersion = $tagVersion.Split('-', 2)[0]
+          $expectedPrerelease = if ($tagVersion.Contains('-')) { $tagVersion.Substring($expectedVersion.Length + 1) } else { '' }
+          if ($manifest.ModuleVersion -ne $expectedVersion) {
+            throw "Tag '$tag' does not match manifest ModuleVersion '$($manifest.ModuleVersion)'."
+          }
+          if ($manifest.PrivateData.PSData.Prerelease -ne $expectedPrerelease) {
+            throw "Tag '$tag' does not match manifest Prerelease '$($manifest.PrivateData.PSData.Prerelease)'."
           }
 
       - name: Lint and test module
@@ -110,10 +115,15 @@ jobs:
             throw "Release tags must follow vX.Y.Z or vX.Y.Z-prerelease format. Got '$tag'."
           }
 
-          $manifestVersion = (Import-PowerShellDataFile -Path ./Snowplow.psd1).ModuleVersion
-          $expected = $tag.TrimStart('v')
-          if ($manifestVersion -ne $expected) {
-            throw "Tag '$tag' does not match manifest ModuleVersion '$manifestVersion'."
+          $manifest = Import-PowerShellDataFile -Path ./Snowplow.psd1
+          $tagVersion = $tag.TrimStart('v')
+          $expectedVersion = $tagVersion.Split('-', 2)[0]
+          $expectedPrerelease = if ($tagVersion.Contains('-')) { $tagVersion.Substring($expectedVersion.Length + 1) } else { '' }
+          if ($manifest.ModuleVersion -ne $expectedVersion) {
+            throw "Tag '$tag' does not match manifest ModuleVersion '$($manifest.ModuleVersion)'."
+          }
+          if ($manifest.PrivateData.PSData.Prerelease -ne $expectedPrerelease) {
+            throw "Tag '$tag' does not match manifest Prerelease '$($manifest.PrivateData.PSData.Prerelease)'."
           }
 
       - name: Build module package

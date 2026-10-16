@@ -1,0 +1,139 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="82" errors="0" failures="0" not-run="0" inconclusive="0" ignored="0" skipped="0" invalid="0" date="2026-10-16" time="19:03:47">
+  <environment platform="Linux" user-domain="" user="runner" nunit-version="2.5.8.0" os-version="6.17.0-1022-azure" machine-name="runnervm8k3b6" clr-version="10.0.12" cwd="/home/runner/work/snowplow/snowplow" />
+  <culture-info current-culture="" current-uiculture="" />
+  <test-suite type="TestFixture" name="Pester" executed="True" result="Success" success="True" time="4.1945" asserts="0" description="Pester">
+    <results>
+      <test-suite type="TestFixture" name="/home/runner/work/snowplow/snowplow/Tests/Snowplow.Tests.ps1" executed="True" result="Success" success="True" time="4.1945" asserts="0" description="/home/runner/work/snowplow/snowplow/Tests/Snowplow.Tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Snow query builder" executed="True" result="Success" success="True" time="0.3455" asserts="0" description="Snow query builder">
+            <results>
+              <test-case description="builds known encoded queries from condition hashtables" name="Snow query builder.builds known encoded queries from condition hashtables" time="0.1015" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="normalizes lowercase joiners supplied to the query builder" name="Snow query builder.normalizes lowercase joiners supplied to the query builder" time="0.0033" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="supports operators without values and validates list operands" name="Snow query builder.supports operators without values and validates list operands" time="0.0716" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="encodes the remaining comparison and text operators" name="Snow query builder.encodes the remaining comparison and text operators" time="0.0047" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="escapes query delimiters in values without altering other characters" name="Snow query builder.escapes query delimiters in values without altering other characters" time="0.0355" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="builds and extends fluent queries with sorting and relative dates" name="Snow query builder.builds and extends fluent queries with sorting and relative dates" time="0.025" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="normalizes lowercase fluent joiners" name="Snow query builder.normalizes lowercase fluent joiners" time="0.007" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="completes fields in query-builder commands from the schema cache" name="Snow query builder.completes fields in query-builder commands from the schema cache" time="0.076" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Module" executed="True" result="Success" success="True" time="0.3874" asserts="0" description="Module">
+            <results>
+              <test-case description="exports only public functions" name="Module.exports only public functions" time="0.0131" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="creates no global session variables" name="Module.creates no global session variables" time="0.0168" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="exports convenience aliases that do not replace built-in aliases" name="Module.exports convenience aliases that do not replace built-in aliases" time="0.0076" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="CLI conveniences" executed="True" result="Success" success="True" time="1.223" asserts="0" description="CLI conveniences">
+            <results>
+              <test-case description="builds URLs for forms, lists, special query values, and nav_to links" name="CLI conveniences.builds URLs for forms, lists, special query values, and nav_to links" time="0.1575" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="formats links as URL, Markdown, or HTML" name="CLI conveniences.formats links as URL, Markdown, or HTML" time="0.1998" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="uses the generated URL as the label when a pipeline record has no number" name="CLI conveniences.uses the generated URL as the label when a pipeline record has no number" time="0.0139" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="resolves a record number and a table schema before building links" name="CLI conveniences.resolves a record number and a table schema before building links" time="0.0408" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="throws InvalidDataException when a lookup returns a malformed sys_id" name="CLI conveniences.throws InvalidDataException when a lookup returns a malformed sys_id" time="0.0208" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="accepts pipeline records and returns URLs without opening a browser" name="CLI conveniences.accepts pipeline records and returns URLs without opening a browser" time="0.0125" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="does not request bulk confirmation for a WhatIf batch" name="CLI conveniences.does not request bulk confirmation for a WhatIf batch" time="0.0455" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns a link when clipboard support is unavailable or fails" name="CLI conveniences.returns a link when clipboard support is unavailable or fails" time="0.2943" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="reports clearly when asked to open a browser in a headless Linux session" name="CLI conveniences.reports clearly when asked to open a browser in a headless Linux session" time="0.0106" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns no prompt segment when disconnected and colors the active environment" name="CLI conveniences.returns no prompt segment when disconnected and colors the active environment" time="0.0115" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="omits ANSI styling when NO_COLOR is set" name="CLI conveniences.omits ANSI styling when NO_COLOR is set" time="0.0181" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="fails clearly when generating a URL without an active connection" name="CLI conveniences.fails clearly when generating a URL without an active connection" time="0.0054" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Resolve-SnowInstanceUri" executed="True" result="Success" success="True" time="1.2714" asserts="0" description="Resolve-SnowInstanceUri">
+            <results>
+              <test-case description="rejects http" name="Resolve-SnowInstanceUri.rejects http" time="0.0173" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="rejects junk" name="Resolve-SnowInstanceUri.rejects junk" time="0.0097" asserts="0" success="True" result="Success" executed="True" />
+              <test-suite type="ParameterizedTest" name="Resolve-SnowInstanceUri.expands &lt;In&gt; to &lt;Out&gt;" executed="True" result="Success" success="True" time="0.0176" asserts="0" description="expands &lt;In&gt; to &lt;Out&gt;">
+                <results>
+                  <test-case description="expands dev123 to https://dev123.service-now.com/" name="Resolve-SnowInstanceUri.expands dev123 to https://dev123.service-now.com/" time="0.0049" asserts="0" success="True" result="Success" executed="True" />
+                  <test-case description="expands dev123.service-now.com to https://dev123.service-now.com/" name="Resolve-SnowInstanceUri.expands dev123.service-now.com to https://dev123.service-now.com/" time="0.0022" asserts="0" success="True" result="Success" executed="True" />
+                  <test-case description="expands https://dev123.service-now.com/some/path?x=1 to https://dev123.service-now.com/" name="Resolve-SnowInstanceUri.expands https://dev123.service-now.com/some/path?x=1 to https://dev123.service-now.com/" time="0.003" asserts="0" success="True" result="Success" executed="True" />
+                  <test-case description="expands https://user:pass@dev123.service-now.com/some/path to https://dev123.service-now.com/" name="Resolve-SnowInstanceUri.expands https://user:pass@dev123.service-now.com/some/path to https://dev123.service-now.com/" time="0.0076" asserts="0" success="True" result="Success" executed="True" />
+                </results>
+              </test-suite>
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Connect-Snowplow" executed="True" result="Success" success="True" time="2.4571" asserts="0" description="Connect-Snowplow">
+            <results>
+              <test-case description="requires a client credential for OAuth" name="Connect-Snowplow.requires a client credential for OAuth" time="0.0083" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="requires -Credential for Basic and warns" name="Connect-Snowplow.requires -Credential for Basic and warns" time="0.0047" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="warns on Basic and sends a Basic header" name="Connect-Snowplow.warns on Basic and sends a Basic header" time="0.1423" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="fetches an OAuth client_credentials token and uses it as Bearer" name="Connect-Snowplow.fetches an OAuth client_credentials token and uses it as Bearer" time="0.0965" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="uses a supplied access token without requesting another token" name="Connect-Snowplow.uses a supplied access token without requesting another token" time="0.0945" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="uses the password grant when a user credential is also supplied" name="Connect-Snowplow.uses the password grant when a user credential is also supplied" time="0.1109" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="resolves credentials from SecretManagement" name="Connect-Snowplow.resolves credentials from SecretManagement" time="0.1428" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="does not keep a session when validation fails" name="Connect-Snowplow.does not keep a session when validation fails" time="0.2851" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="clears schema caches when connecting or disconnecting" name="Connect-Snowplow.clears schema caches when connecting or disconnecting" time="0.0178" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="connects to a Prod profile with a warning and read-only mode by default" name="Connect-Snowplow.connects to a Prod profile with a warning and read-only mode by default" time="0.1519" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="allows Prod profile writes when -AllowWrite is passed" name="Connect-Snowplow.allows Prod profile writes when -AllowWrite is passed" time="0.0826" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="uses explicit profile credentials instead of inherited secret references" name="Connect-Snowplow.uses explicit profile credentials instead of inherited secret references" time="0.0442" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Snowplow profiles" executed="True" result="Success" success="True" time="2.8137" asserts="0" description="Snowplow profiles">
+            <results>
+              <test-case description="reads the legacy Linux profile store only when the XDG store is absent" name="Snowplow profiles.reads the legacy Linux profile store only when the XDG store is absent" time="0.1135" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="adds, updates, lists, removes, and completes profiles" name="Snowplow profiles.adds, updates, lists, removes, and completes profiles" time="0.1338" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="fails clearly when the profile store is corrupted" name="Snowplow profiles.fails clearly when the profile store is corrupted" time="0.0146" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="rejects missing or invalid environment metadata in the profile store" name="Snowplow profiles.rejects missing or invalid environment metadata in the profile store" time="0.0156" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="normalizes instance URLs before persisting profile data" name="Snowplow profiles.normalizes instance URLs before persisting profile data" time="0.0768" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Linux portability" executed="True" result="Success" success="True" time="2.8843" asserts="0" description="Linux portability">
+            <results>
+              <test-case description="uses XDG defaults and configured directories for Linux" name="Linux portability.uses XDG defaults and configured directories for Linux" time="0.0161" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="writes profile files with restrictive permissions and UTF-8 without a BOM" name="Linux portability.writes profile files with restrictive permissions and UTF-8 without a BOM" time="0.0506" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Invoke-SnowRequest" executed="True" result="Success" success="True" time="3.5398" asserts="0" description="Invoke-SnowRequest">
+            <results>
+              <test-case description="throws when not connected" name="Invoke-SnowRequest.throws when not connected" time="0.0211" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="builds query, fields, display value, limit and offset" name="Invoke-SnowRequest.builds query, fields, display value, limit and offset" time="0.0155" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="pages until a short page is returned" name="Invoke-SnowRequest.pages until a short page is returned" time="0.0387" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="honours -First" name="Invoke-SnowRequest.honours -First" time="0.0355" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="gets a single record by sys_id without paging" name="Invoke-SnowRequest.gets a single record by sys_id without paging" time="0.0338" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="retries 429 honouring Retry-After, then succeeds" name="Invoke-SnowRequest.retries 429 honouring Retry-After, then succeeds" time="0.0447" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="retries 429 honouring an HTTP-date Retry-After" name="Invoke-SnowRequest.retries 429 honouring an HTTP-date Retry-After" time="0.0891" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="fails explicitly when Retry-After exceeds the supported wait" name="Invoke-SnowRequest.fails explicitly when Retry-After exceeds the supported wait" time="0.0449" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="retries 503 with exponential backoff and gives up with a parsed error" name="Invoke-SnowRequest.retries 503 with exponential backoff and gives up with a parsed error" time="0.0645" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="does not retry 4xx and maps the error" name="Invoke-SnowRequest.does not retry 4xx and maps the error" time="0.0606" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="maps an HTTP error without ErrorDetails under strict mode" name="Invoke-SnowRequest.maps an HTTP error without ErrorDetails under strict mode" time="0.0461" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="does not retry POST on 5xx (non-idempotent)" name="Invoke-SnowRequest.does not retry POST on 5xx (non-idempotent)" time="0.0315" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="sends a JSON body for writes" name="Invoke-SnowRequest.sends a JSON body for writes" time="0.0178" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="honours -WhatIf for writes" name="Invoke-SnowRequest.honours -WhatIf for writes" time="0.0264" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="refreshes an expiring OAuth token" name="Invoke-SnowRequest.refreshes an expiring OAuth token" time="0.0365" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="uses the default OAuth token lifetime when expires_in is missing" name="Invoke-SnowRequest.uses the default OAuth token lifetime when expires_in is missing" time="0.046" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Resolve-SnowBackend / configuration" executed="True" result="Success" success="True" time="3.5799" asserts="0" description="Resolve-SnowBackend / configuration">
+            <results>
+              <test-case description="defaults to Rest and Auto resolves to Rest" name="Resolve-SnowBackend / configuration.defaults to Rest and Auto resolves to Rest" time="0.0024" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="resolves the Sdk backend and reports missing dependencies clearly" name="Resolve-SnowBackend / configuration.resolves the Sdk backend and reports missing dependencies clearly" time="0.0281" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="uses the module default when set" name="Resolve-SnowBackend / configuration.uses the module default when set" time="0.0033" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Admin cmdlets" executed="True" result="Success" success="True" time="3.8077" asserts="0" description="Admin cmdlets">
+            <results>
+              <test-case description="gets typed records with query, fields and limit" name="Admin cmdlets.gets typed records with query, fields and limit" time="0.0216" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="passes a built query to Get-SnowRecord unchanged" name="Admin cmdlets.passes a built query to Get-SnowRecord unchanged" time="0.0141" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="pages all records when -All is supplied" name="Admin cmdlets.pages all records when -All is supplied" time="0.0101" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="creates records and honors WhatIf" name="Admin cmdlets.creates records and honors WhatIf" time="0.0118" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="updates records using PATCH by default and PUT when requested" name="Admin cmdlets.updates records using PATCH by default and PUT when requested" time="0.0194" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="deletes records and honors WhatIf" name="Admin cmdlets.deletes records and honors WhatIf" time="0.0116" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="lists tables and caches their schema" name="Admin cmdlets.lists tables and caches their schema" time="0.0222" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="gets dictionary fields without caching filtered results" name="Admin cmdlets.gets dictionary fields without caching filtered results" time="0.0116" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="does not cache filtered or limited schema lookups" name="Admin cmdlets.does not cache filtered or limited schema lookups" time="0.0152" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="caches complete unfiltered dictionary fields" name="Admin cmdlets.caches complete unfiltered dictionary fields" time="0.0101" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="gets CI and relationship records from their respective tables" name="Admin cmdlets.gets CI and relationship records from their respective tables" time="0.0169" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="exports pipeline records to CSV and JSON" name="Admin cmdlets.exports pipeline records to CSV and JSON" time="0.013" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="compares records and returns differences only" name="Admin cmdlets.compares records and returns differences only" time="0.0186" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="compares single-property records correctly" name="Admin cmdlets.compares single-property records correctly" time="0.0103" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="completes tables and fields from cached schema" name="Admin cmdlets.completes tables and fields from cached schema" time="0.018" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+    </results>
+  </test-suite>
+</test-results>

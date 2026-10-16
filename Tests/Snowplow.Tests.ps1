@@ -18,7 +18,7 @@ BeforeAll {
     $script:Sid = 'a' * 32
 }
 
-Describe 'Snow query builder' {
+Describe 'Snow query builder' -Tag 'Unit' {
     It 'builds known encoded queries from condition hashtables' {
         $conditions = [ordered]@{
             name = @{ Operator = 'STARTSWITH'; Value = 'INC' }
@@ -92,7 +92,7 @@ Describe 'Snow query builder' {
     }
 }
 
-Describe 'Module' {
+Describe 'Module' -Tag 'Unit' {
     It 'exports only public functions' {
         (Get-Command -Module Snowplow -CommandType Function).Name | Sort-Object |
             Should -Be (@(
@@ -118,7 +118,7 @@ Describe 'Module' {
     }
 }
 
-Describe 'CLI conveniences' {
+Describe 'CLI conveniences' -Tag 'Unit' {
     BeforeEach {
         $null = Connect-Snowplow -Instance dev1 -AuthMethod Basic -Credential $Cred -SkipValidation -WarningAction SilentlyContinue
     }
@@ -254,7 +254,7 @@ Describe 'CLI conveniences' {
     }
 }
 
-Describe 'Resolve-SnowInstanceUri' {
+Describe 'Resolve-SnowInstanceUri' -Tag 'Unit' {
     It 'expands <In> to <Out>' -ForEach @(
         @{ In = 'dev123'; Out = 'https://dev123.service-now.com/' }
         @{ In = 'dev123.service-now.com'; Out = 'https://dev123.service-now.com/' }
@@ -267,7 +267,7 @@ Describe 'Resolve-SnowInstanceUri' {
     It 'rejects junk' { InModuleScope Snowplow { { Resolve-SnowInstanceUri 'bad host!' } | Should -Throw } }
 }
 
-Describe 'Connect-Snowplow' {
+Describe 'Connect-Snowplow' -Tag 'Unit' {
     AfterEach {
         Disconnect-Snowplow
         Set-SnowplowConfiguration -DefaultBackend Rest
@@ -398,7 +398,7 @@ Describe 'Connect-Snowplow' {
     }
 }
 
-Describe 'Snowplow profiles' {
+Describe 'Snowplow profiles' -Tag 'Unit' {
     BeforeEach {
         Mock -ModuleName Snowplow Get-SnowProfileStorePath { Join-Path $TestDrive 'profiles.json' }
         Mock -ModuleName Snowplow Get-SnowLegacyProfileStorePath { Join-Path $TestDrive 'legacy-profiles.json' }
@@ -481,7 +481,7 @@ Describe 'Snowplow profiles' {
     }
 }
 
-Describe 'Linux portability' {
+Describe 'Linux portability' -Tag 'Unit' {
     It 'uses XDG defaults and configured directories for Linux' -Skip:(-not $IsLinux) {
         $originalConfig = $env:XDG_CONFIG_HOME
         $originalCache = $env:XDG_CACHE_HOME
@@ -520,7 +520,7 @@ Describe 'Linux portability' {
     }
 }
 
-Describe 'Invoke-SnowRequest' {
+Describe 'Invoke-SnowRequest' -Tag 'Unit' {
     BeforeEach {
         Mock -ModuleName Snowplow Start-SnowSleep {}
         Mock -ModuleName Snowplow Invoke-RestMethod { [pscustomobject]@{ result = @() } }
@@ -673,7 +673,7 @@ Describe 'Invoke-SnowRequest' {
     }
 }
 
-Describe 'Resolve-SnowBackend / configuration' {
+Describe 'Resolve-SnowBackend / configuration' -Tag 'Unit' {
     AfterAll { Set-SnowplowConfiguration -DefaultBackend Rest }
     It 'defaults to Rest and Auto resolves to Rest' {
         InModuleScope Snowplow { Resolve-SnowBackend | Should -Be 'Rest'; Resolve-SnowBackend -Backend Auto | Should -Be 'Rest' }
@@ -691,7 +691,7 @@ Describe 'Resolve-SnowBackend / configuration' {
     }
 }
 
-Describe 'Admin cmdlets' {
+Describe 'Admin cmdlets' -Tag 'Unit' {
     BeforeEach {
         Mock -ModuleName Snowplow Invoke-RestMethod { [pscustomobject]@{ result = @() } }
         Mock -ModuleName Snowplow Invoke-SnowRequest { [pscustomobject]@{ result = @([pscustomobject]@{ sys_id = $Sid; number = 'INC1'; short_description = 'Test' }) } }
