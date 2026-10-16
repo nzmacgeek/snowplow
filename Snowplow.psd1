@@ -7,10 +7,10 @@
     PowerShellVersion     = '7.2'
     CompatiblePSEditions  = @('Core')
     FunctionsToExport     = @(
-        'Connect-Snowplow', 'Disconnect-Snowplow', 'Get-SnowplowConfiguration', 'Set-SnowplowConfiguration',
+        'Add-SnowplowProfile', 'Connect-Snowplow', 'Disconnect-Snowplow', 'Get-SnowplowConfiguration', 'Get-SnowplowProfile',
         'Get-SnowRecord', 'New-SnowRecord', 'Set-SnowRecord', 'Remove-SnowRecord',
         'Get-SnowTable', 'Get-SnowDictionary', 'Get-SnowCI', 'Get-SnowCIRelationship',
-        'Export-SnowRecord', 'Compare-SnowRecord'
+        'Export-SnowRecord', 'Compare-SnowRecord', 'Remove-SnowplowProfile', 'Set-SnowplowConfiguration', 'Set-SnowplowProfile'
     )
     CmdletsToExport       = @()
     VariablesToExport     = @()

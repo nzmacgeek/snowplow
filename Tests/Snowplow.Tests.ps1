@@ -22,8 +22,9 @@ Describe 'Module' {
             Should -Be (@(
                 'Compare-SnowRecord', 'Connect-Snowplow', 'Disconnect-Snowplow', 'Export-SnowRecord',
                 'Get-SnowCI', 'Get-SnowCIRelationship', 'Get-SnowDictionary', 'Get-SnowRecord',
-                'Get-SnowTable', 'Get-SnowplowConfiguration', 'New-SnowRecord', 'Remove-SnowRecord',
-                'Set-SnowRecord', 'Set-SnowplowConfiguration'
+                'Get-SnowTable', 'Get-SnowplowConfiguration', 'Get-SnowplowProfile', 'New-SnowRecord',
+                'Remove-SnowRecord', 'Remove-SnowplowProfile', 'Set-SnowRecord', 'Set-SnowplowConfiguration',
+                'Add-SnowplowProfile', 'Set-SnowplowProfile'
             ) | Sort-Object)
     }
     It 'creates no global session variables' {
@@ -45,7 +46,10 @@ Describe 'Resolve-SnowInstanceUri' {
 }
 
 Describe 'Connect-Snowplow' {
-    AfterEach { Disconnect-Snowplow }
+    AfterEach {
+        Disconnect-Snowplow
+        Set-SnowplowConfiguration -DefaultBackend Rest
+    }
 
     It 'requires a client credential for OAuth' {
         { Connect-Snowplow -Instance dev1 } | Should -Throw '*OAuth requires*'
@@ -105,6 +109,72 @@ Describe 'Connect-Snowplow' {
         Disconnect-Snowplow
         InModuleScope Snowplow { $script:SnowSchemaCache.Tables } | Should -BeNullOrEmpty
         InModuleScope Snowplow { $script:SnowSchemaCache.Fields.Count } | Should -Be 0
+    }
+
+    It 'connects to a Prod profile with a warning and read-only mode by default' {
+        Mock -ModuleName Snowplow Get-SnowProfileStorePath { Join-Path $TestDrive 'profiles.json' }
+        Remove-Item (Join-Path $TestDrive 'profiles.json') -ErrorAction SilentlyContinue
+        function global:Get-Secret { param($Name, $Vault) }
+        Add-SnowplowProfile -Name prod -Instance prod1 -DefaultBackend Sdk -Environment Prod -ClientCredentialSecretName SnowClient -Vault Corp
+        Mock -ModuleName Snowplow Get-Secret { $Client }
+        Mock -ModuleName Snowplow Invoke-RestMethod { [pscustomobject]@{ access_token = 'tok'; expires_in = 1800 } } -ParameterFilter { $Uri.AbsolutePath -eq '/oauth_token.do' }
+        Mock -ModuleName Snowplow Invoke-RestMethod { [pscustomobject]@{ result = @() } } -ParameterFilter { $Uri.AbsolutePath -like '/api/*' }
+
+        $session = Connect-Snowplow -Profile prod -WarningVariable warnings -WarningAction SilentlyContinue
+
+        $warnings | Should -Match 'read-only'
+        $session.Environment | Should -Be 'Prod'
+        $session.ReadOnly | Should -BeTrue
+        (Get-SnowplowConfiguration).DefaultBackend | Should -Be 'Sdk'
+        { New-SnowRecord -Table incident -Values @{ short_description = 'Blocked' } -Confirm:$false } | Should -Throw '*Writes are disabled*'
+        (Get-Content (Join-Path $TestDrive 'profiles.json') -Raw) | Should -Not -Match 'tok|csecret|pw'
+        Remove-Item function:global:Get-Secret
+    }
+
+    It 'allows Prod profile writes when -AllowWrite is passed' {
+        Mock -ModuleName Snowplow Get-SnowProfileStorePath { Join-Path $TestDrive 'profiles.json' }
+        Remove-Item (Join-Path $TestDrive 'profiles.json') -ErrorAction SilentlyContinue
+        function global:Get-Secret { param($Name, $Vault) }
+        Add-SnowplowProfile -Name prod -Instance prod1 -Environment Prod -ClientCredentialSecretName SnowClient
+        Mock -ModuleName Snowplow Get-Secret { $Client }
+        Mock -ModuleName Snowplow Invoke-RestMethod { [pscustomobject]@{ access_token = 'tok'; expires_in = 1800 } } -ParameterFilter { $Uri.AbsolutePath -eq '/oauth_token.do' }
+        Mock -ModuleName Snowplow Invoke-SnowRequest { [pscustomobject]@{ result = @([pscustomobject]@{ sys_id = $Sid; number = 'INC1' }) } }
+        Mock -ModuleName Snowplow Invoke-RestMethod { [pscustomobject]@{ result = @() } } -ParameterFilter { $Uri.AbsolutePath -like '/api/*' }
+
+        $null = Connect-Snowplow -Profile prod -AllowWrite -WarningAction SilentlyContinue
+        New-SnowRecord -Table incident -Values @{ short_description = 'Allowed' } -Confirm:$false | Out-Null
+
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -ParameterFilter { $Method -eq 'POST' -and $Body.short_description -eq 'Allowed' }
+        Remove-Item function:global:Get-Secret
+    }
+}
+
+Describe 'Snowplow profiles' {
+    BeforeEach {
+        Mock -ModuleName Snowplow Get-SnowProfileStorePath { Join-Path $TestDrive 'profiles.json' }
+    }
+
+    It 'adds, updates, lists, removes, and completes profiles' {
+        Add-SnowplowProfile -Name dev -Instance dev1 -ClientCredentialSecretName SnowClient -Vault Local -PassThru | Out-Null
+        Set-SnowplowProfile -Name dev -DefaultBackend Sdk -Environment Test
+        Add-SnowplowProfile -Name prod -Instance prod1 -Environment Prod
+
+        $profile = Get-SnowplowProfile -Name dev
+        $profile.Instance | Should -Be 'dev1'
+        $profile.DefaultBackend | Should -Be 'Sdk'
+        $profile.Environment | Should -Be 'Test'
+        (Get-SnowplowProfile).Name | Should -Be @('dev', 'prod')
+        InModuleScope Snowplow { (Get-SnowCompletionValue -Kind Profile -Word 'pr').CompletionText | Should -Contain 'prod' }
+        $scriptText = 'Connect-Snowplow -Profile pr'
+        (TabExpansion2 $scriptText $scriptText.Length).CompletionMatches.CompletionText | Should -Contain 'prod'
+
+        Remove-SnowplowProfile -Name prod -Confirm:$false
+        (Get-SnowplowProfile).Name | Should -Be @('dev')
+    }
+
+    It 'fails clearly when the profile store is corrupted' {
+        Set-Content -Path (Join-Path $TestDrive 'profiles.json') -Value '{bad json' -Encoding utf8
+        { Get-SnowplowProfile } | Should -Throw '*corrupted*'
     }
 }
 
@@ -281,9 +351,12 @@ Describe 'Resolve-SnowBackend / configuration' {
 
 Describe 'Admin cmdlets' {
     BeforeEach {
+        Mock -ModuleName Snowplow Invoke-RestMethod { [pscustomobject]@{ result = @() } }
         Mock -ModuleName Snowplow Invoke-SnowRequest { [pscustomobject]@{ result = @([pscustomobject]@{ sys_id = $Sid; number = 'INC1'; short_description = 'Test' }) } }
         InModuleScope Snowplow { $script:SnowSchemaCache.Tables = $null; $script:SnowSchemaCache.Fields = @{} }
+        $null = Connect-Snowplow -Instance dev1 -AuthMethod Basic -Credential $Cred -SkipValidation -WarningAction SilentlyContinue
     }
+    AfterEach { Disconnect-Snowplow }
 
     It 'gets typed records with query, fields and limit' {
         $record = Get-SnowRecord -Table incident -Query 'active=true' -Fields number,short_description -Limit 10

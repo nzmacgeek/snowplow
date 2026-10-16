@@ -1,7 +1,7 @@
 function Get-SnowCompletionValue {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][ValidateSet('Table', 'Field')][string]$Kind,
+        [Parameter(Mandatory)][ValidateSet('Table', 'Field', 'Profile')][string]$Kind,
         [string]$Table,
         [string]$Word = ''
     )
@@ -14,6 +14,9 @@ function Get-SnowCompletionValue {
                 $script:SnowSchemaCache.Tables = $items
             }
             $values = @($items | ForEach-Object { $_.name } | Where-Object { $_ -like "$Word*" } | Sort-Object -Unique)
+        }
+        elseif ($Kind -eq 'Profile') {
+            $values = @(Read-SnowProfileStore | ForEach-Object { $_.Name } | Where-Object { $_ -like "$Word*" } | Sort-Object -Unique)
         }
         else {
             $items = $script:SnowSchemaCache.Fields[$Table]
