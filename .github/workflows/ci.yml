@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    name: ${{ matrix.os }} / PowerShell 7
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Cache PowerShell modules
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57
+        with:
+          path: |
+            ~/.local/share/powershell/Modules
+            ~/Documents/PowerShell/Modules
+          key: psm-${{ runner.os }}-${{ hashFiles('**/*.ps1', '**/*.psm1', '**/*.psd1') }}
+          restore-keys: |
+            psm-${{ runner.os }}-
+
+      - name: Install pinned tooling
+        shell: pwsh
+        env:
+          PESTER_VERSION: 5.7.1
+          PSSCRIPTANALYZER_VERSION: 1.22.0
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          foreach ($module in @{ Pester = $env:PESTER_VERSION; PSScriptAnalyzer = $env:PSSCRIPTANALYZER_VERSION }.GetEnumerator()) {
+            $moduleSpecification = @{ ModuleName = $module.Key; RequiredVersion = $module.Value }
+            if (-not (Get-Module -ListAvailable -FullyQualifiedName $moduleSpecification -ErrorAction SilentlyContinue)) {
+              Install-Module -Name $module.Key -RequiredVersion $module.Value -Scope CurrentUser -Force -SkipPublisherCheck -Repository PSGallery
+            }
+          }
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $results = Invoke-ScriptAnalyzer -Path $PWD -Recurse -Settings (Join-Path $PWD '.psscriptanalyzer.settings.psd1') -ErrorAction Continue
+          $results | Format-Table -AutoSize
+          if (($results | Where-Object { $_.Severity -eq 'Error' }).Count -gt 0) {
+            throw 'PSScriptAnalyzer reported one or more errors.'
+          }
+
+      - name: Validate module manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Test-ModuleManifest -Path ./Snowplow.psd1 | Out-Null
+          $manifest = Import-PowerShellDataFile -Path ./Snowplow.psd1
+          if (@($manifest.FunctionsToExport | Where-Object { [System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($_) }).Count -gt 0) {
+            throw 'FunctionsToExport must list explicit function names and cannot contain wildcards.'
+          }
+          $module = Import-Module ./Snowplow.psm1 -Force -PassThru
+          $actual = @($module.ExportedFunctions.Keys | Sort-Object)
+          $expected = @($manifest.FunctionsToExport | Sort-Object)
+          if ($actual.Count -ne $expected.Count -or (Compare-Object -ReferenceObject $actual -DifferenceObject $expected -SyncWindow 0)) {
+            throw 'The manifest export list does not match the module exports.'
+          }
+
+      - name: Run Pester unit tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $resultsPath = Join-Path $PWD 'TestResults'
+          New-Item -Path $resultsPath -ItemType Directory -Force | Out-Null
+          $configuration = New-PesterConfiguration
+          $configuration.Run.Path = './Tests'
+          $configuration.Filter.Tag = 'Unit'
+          $configuration.Run.Exit = $true
+          $configuration.TestResult.Enabled = $true
+          $configuration.TestResult.OutputFormat = 'NUnitXml'
+          $configuration.TestResult.OutputPath = Join-Path $resultsPath 'unit-tests.xml'
+          $configuration.CodeCoverage.Enabled = $true
+          $configuration.CodeCoverage.Path = Get-ChildItem -Path ./Public, ./Private -Filter '*.ps1' -Recurse | Select-Object -ExpandProperty FullName
+          $configuration.CodeCoverage.OutputPath = Join-Path $resultsPath 'coverage.xml'
+          Invoke-Pester -Configuration $configuration
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults/**
+
+      - name: Summarize test report
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path ./TestResults) {
+            $resultFile = Join-Path $PWD 'TestResults/unit-tests.xml'
+            if (Test-Path $resultFile) {
+              $summary = [xml](Get-Content -Raw $resultFile)
+              $testCases = @($summary.SelectNodes('//test-case'))
+              $passed = @($testCases | Where-Object { $_.GetAttribute('result') -eq 'Success' }).Count
+              $failed = @($testCases | Where-Object { $_.GetAttribute('result') -eq 'Failure' }).Count
+              $skipped = @($testCases | Where-Object { $_.GetAttribute('result') -in @('Skipped', 'Ignored', 'NotRunnable', 'Inconclusive') }).Count
+              "## Test summary" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              "- Passed: $passed" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              "- Failed: $failed" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              "- Skipped: $skipped" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            }
+          }

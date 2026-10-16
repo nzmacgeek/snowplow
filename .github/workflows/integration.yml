@@ -1,0 +1,79 @@
+name: Integration
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    if: ${{ github.event_name != 'pull_request' && github.event_name != 'pull_request_target' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default
+          }
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck -Repository PSGallery
+
+      - name: Verify developer instance is available
+        shell: pwsh
+        env:
+          SNOW_INSTANCE: ${{ secrets.SNOW_INSTANCE }}
+          SNOW_USERNAME: ${{ secrets.SNOW_USERNAME }}
+          SNOW_PASSWORD: ${{ secrets.SNOW_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:SNOW_INSTANCE) -or [string]::IsNullOrWhiteSpace($env:SNOW_USERNAME) -or [string]::IsNullOrWhiteSpace($env:SNOW_PASSWORD)) {
+            throw 'The Snowplow integration job requires SNOW_INSTANCE, SNOW_USERNAME, and SNOW_PASSWORD secrets.'
+          }
+
+          $uri = "https://$($env:SNOW_INSTANCE).service-now.com/"
+          $securePassword = ConvertTo-SecureString $env:SNOW_PASSWORD -AsPlainText -Force
+          $credentials = [pscredential]::new($env:SNOW_USERNAME, $securePassword)
+          try {
+            $response = Invoke-WebRequest -Uri $uri -Credential $credentials -UseBasicParsing -SkipHttpErrorCheck
+            if ($response.StatusCode -eq 200) {
+              return
+            }
+          }
+          catch {
+            $message = $_.Exception.Message
+            if ($message -match 'hibernat|503|timed out|temporar') {
+              throw 'The ServiceNow developer PDI appears to be hibernating or unavailable.'
+            }
+            throw
+          }
+
+          throw 'The ServiceNow developer instance did not respond successfully; the PDI may be hibernating.'
+
+      - name: Run Integration tests
+        shell: pwsh
+        env:
+          SNOW_INSTANCE: ${{ secrets.SNOW_INSTANCE }}
+          SNOW_USERNAME: ${{ secrets.SNOW_USERNAME }}
+          SNOW_PASSWORD: ${{ secrets.SNOW_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $configuration = New-PesterConfiguration
+          $configuration.Run.Path = './Tests'
+          $configuration.Filter.Tag = 'Integration'
+          $configuration.Run.Exit = $true
+          $configuration.Run.PassThru = $true
+          $result = Invoke-Pester -Configuration $configuration
+          $executedCount = $result.PassedCount + $result.FailedCount + $result.SkippedCount
+          if ($executedCount -eq 0) {
+            throw 'No Integration-tagged tests were discovered.'
+          }
