@@ -9,11 +9,8 @@ function Resolve-SnowBackend {
 
     if (-not $Backend) { $Backend = $script:SnowplowConfig.DefaultBackend }
     if ($Backend -eq 'Auto') {
-        # The now-sdk backend is not implemented yet, so Auto currently means Rest.
+        # Prefer the built-in REST backend unless the user explicitly selects the optional SDK.
         return 'Rest'
-    }
-    if ($Backend -eq 'Sdk') {
-        throw [System.NotImplementedException]::new('The Sdk backend is not implemented yet.')
     }
     $Backend
 }

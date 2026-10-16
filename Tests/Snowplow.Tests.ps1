@@ -19,7 +19,12 @@ BeforeAll {
 Describe 'Module' {
     It 'exports only public functions' {
         (Get-Command -Module Snowplow).Name | Sort-Object |
-            Should -Be @('Connect-Snowplow', 'Disconnect-Snowplow', 'Get-SnowplowConfiguration', 'Set-SnowplowConfiguration')
+            Should -Be (@(
+                'Compare-SnowRecord', 'Connect-Snowplow', 'Disconnect-Snowplow', 'Export-SnowRecord',
+                'Get-SnowCI', 'Get-SnowCIRelationship', 'Get-SnowDictionary', 'Get-SnowRecord',
+                'Get-SnowTable', 'Get-SnowplowConfiguration', 'New-SnowRecord', 'Remove-SnowRecord',
+                'Set-SnowRecord', 'Set-SnowplowConfiguration'
+            ) | Sort-Object)
     }
     It 'creates no global session variables' {
         Get-Variable -Scope Global -Name 'Snowplow*' -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
@@ -82,6 +87,24 @@ Describe 'Connect-Snowplow' {
         Mock -ModuleName Snowplow Invoke-RestMethod { throw (New-HttpError 401 '{"error":{"message":"User Not Authenticated"},"status":"failure"}') }
         { Connect-Snowplow -Instance dev1 -AuthMethod Basic -Credential $Cred -WarningAction SilentlyContinue } | Should -Throw '*HTTP 401*'
         InModuleScope Snowplow { $script:SnowplowSession } | Should -BeNullOrEmpty
+    }
+    It 'clears schema caches when connecting or disconnecting' {
+        InModuleScope Snowplow {
+            $script:SnowSchemaCache.Tables = @([pscustomobject]@{ name = 'old_table' })
+            $script:SnowSchemaCache.Fields.old_table = @([pscustomobject]@{ element = 'old_field' })
+        }
+        Mock -ModuleName Snowplow Invoke-RestMethod { [pscustomobject]@{ result = @() } }
+        $null = Connect-Snowplow -Instance dev1 -AuthMethod Basic -Credential $Cred -SkipValidation -WarningAction SilentlyContinue
+        InModuleScope Snowplow { $script:SnowSchemaCache.Tables } | Should -BeNullOrEmpty
+        InModuleScope Snowplow { $script:SnowSchemaCache.Fields.Count } | Should -Be 0
+
+        InModuleScope Snowplow {
+            $script:SnowSchemaCache.Tables = @([pscustomobject]@{ name = 'old_table' })
+            $script:SnowSchemaCache.Fields.old_table = @([pscustomobject]@{ element = 'old_field' })
+        }
+        Disconnect-Snowplow
+        InModuleScope Snowplow { $script:SnowSchemaCache.Tables } | Should -BeNullOrEmpty
+        InModuleScope Snowplow { $script:SnowSchemaCache.Fields.Count } | Should -Be 0
     }
 }
 
@@ -243,12 +266,130 @@ Describe 'Resolve-SnowBackend / configuration' {
     It 'defaults to Rest and Auto resolves to Rest' {
         InModuleScope Snowplow { Resolve-SnowBackend | Should -Be 'Rest'; Resolve-SnowBackend -Backend Auto | Should -Be 'Rest' }
     }
-    It 'Sdk is not implemented yet' {
-        InModuleScope Snowplow { { Resolve-SnowBackend -Backend Sdk } | Should -Throw '*not implemented*' }
+    It 'resolves the Sdk backend and reports missing dependencies clearly' {
+        InModuleScope Snowplow {
+            Resolve-SnowBackend -Backend Sdk | Should -Be Sdk
+            { Invoke-SnowSdk -Table incident } | Should -Throw '*now-sdk*'
+        }
     }
     It 'uses the module default when set' {
         Set-SnowplowConfiguration -DefaultBackend Sdk
         (Get-SnowplowConfiguration).DefaultBackend | Should -Be 'Sdk'
-        InModuleScope Snowplow { { Resolve-SnowBackend } | Should -Throw }
+        InModuleScope Snowplow { Resolve-SnowBackend | Should -Be Sdk }
+    }
+}
+
+Describe 'Admin cmdlets' {
+    BeforeEach {
+        Mock -ModuleName Snowplow Invoke-SnowRequest { [pscustomobject]@{ result = @([pscustomobject]@{ sys_id = $Sid; number = 'INC1'; short_description = 'Test' }) } }
+        InModuleScope Snowplow { $script:SnowSchemaCache.Tables = $null; $script:SnowSchemaCache.Fields = @{} }
+    }
+
+    It 'gets typed records with query, fields and limit' {
+        $record = Get-SnowRecord -Table incident -Query 'active=true' -Fields number,short_description -Limit 10
+        $record | Should -BeOfType [pscustomobject]
+        $record.PSTypeNames | Should -Contain 'Snowplow.Record.incident'
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -ParameterFilter {
+            $Table -eq 'incident' -and $Query -eq 'active=true' -and $First -eq 10 -and $Fields -contains 'number'
+        }
+    }
+
+    It 'pages all records when -All is supplied' {
+        Get-SnowRecord -Table incident -Limit 15 -All | Out-Null
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -ParameterFilter { $Table -eq 'incident' -and -not $PSBoundParameters.ContainsKey('First') }
+    }
+
+    It 'creates records and honors WhatIf' {
+        New-SnowRecord -Table incident -Values @{ short_description = 'Test' } -Confirm:$false | Out-Null
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -ParameterFilter { $Method -eq 'POST' -and $Body.short_description -eq 'Test' }
+        New-SnowRecord -Table incident -Values @{ short_description = 'No-op' } -WhatIf
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -Times 1 -Exactly
+    }
+
+    It 'updates records using PATCH by default and PUT when requested' {
+        Set-SnowRecord -Table incident -SysId $Sid -Values @{ priority = '2' } -Confirm:$false | Out-Null
+        Set-SnowRecord -Table incident -SysId $Sid -Values @{ priority = '2' } -Replace -Confirm:$false | Out-Null
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -Times 1 -ParameterFilter { $Method -eq 'PATCH' }
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -Times 1 -ParameterFilter { $Method -eq 'PUT' }
+    }
+
+    It 'deletes records and honors WhatIf' {
+        Remove-SnowRecord -Table incident -SysId $Sid -Confirm:$false
+        Remove-SnowRecord -Table incident -SysId $Sid -WhatIf
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -Times 1 -ParameterFilter { $Method -eq 'DELETE' }
+    }
+
+    It 'lists tables and caches their schema' {
+        Get-SnowTable -All -Limit 25 | Out-Null
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -ParameterFilter { $Table -eq 'sys_db_object' -and -not $PSBoundParameters.ContainsKey('First') }
+        InModuleScope Snowplow { $script:SnowSchemaCache.Tables } | Should -Not -BeNullOrEmpty
+    }
+
+    It 'gets dictionary fields without caching filtered results' {
+        Get-SnowDictionary -Table incident -Element priority -All | Out-Null
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -ParameterFilter { $Table -eq 'sys_dictionary' -and $Query -eq 'name=incident^element=priority' }
+        InModuleScope Snowplow { $script:SnowSchemaCache.Fields.ContainsKey('incident') } | Should -BeFalse
+    }
+
+    It 'does not cache filtered or limited schema lookups' {
+        Get-SnowTable -Query 'nameSTARTSWITHcmdb' -All | Out-Null
+        Get-SnowTable -Limit 25 | Out-Null
+        Get-SnowDictionary -Table incident -Element priority -All | Out-Null
+        Get-SnowDictionary -Table incident -Limit 25 | Out-Null
+        InModuleScope Snowplow {
+            $script:SnowSchemaCache.Tables | Should -BeNullOrEmpty
+            $script:SnowSchemaCache.Fields.Count | Should -Be 0
+        }
+    }
+
+    It 'caches complete unfiltered dictionary fields' {
+        Get-SnowDictionary -Table incident -All | Out-Null
+        InModuleScope Snowplow { $script:SnowSchemaCache.Fields.ContainsKey('incident') } | Should -BeTrue
+    }
+
+    It 'gets CI and relationship records from their respective tables' {
+        Get-SnowCI -Limit 5 | Out-Null
+        Get-SnowCIRelationship -Limit 6 | Out-Null
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -Times 1 -ParameterFilter { $Table -eq 'cmdb_ci' }
+        Should -Invoke -ModuleName Snowplow Invoke-SnowRequest -Times 1 -ParameterFilter { $Table -eq 'cmdb_rel_ci' }
+    }
+
+    It 'exports pipeline records to CSV and JSON' {
+        $csv = [pscustomobject]@{ number = 'INC1' } | Export-SnowRecord -Format Csv
+        $csv | Should -Match 'number'
+        $csv | Should -Match 'INC1'
+        $json = [pscustomobject]@{ number = 'INC1' } | Export-SnowRecord -Format Json
+        $json | Should -Match '"number": "INC1"'
+    }
+
+    It 'compares records and returns differences only' {
+        $diff = Compare-SnowRecord -Reference ([pscustomobject]@{ number = 'INC1'; state = '1' }) -Difference ([pscustomobject]@{ number = 'INC1'; state = '2' })
+        @($diff).Count | Should -Be 1
+        $diff.Property | Should -Be state
+        $diff.Reference | Should -Be '1'
+        $diff.Difference | Should -Be '2'
+    }
+
+    It 'compares single-property records correctly' {
+        $diff = Compare-SnowRecord -Reference ([pscustomobject]@{ state = '1' }) -Difference ([pscustomobject]@{ state = '2' })
+        @($diff).Count | Should -Be 1
+        $diff.Property | Should -Be state
+        $diff.Reference | Should -Be '1'
+        $diff.Difference | Should -Be '2'
+        Compare-SnowRecord -Reference ([pscustomobject]@{ state = '1' }) -Difference ([pscustomobject]@{ state = '1' }) |
+            Should -BeNullOrEmpty
+    }
+
+    It 'completes tables and fields from cached schema' {
+        InModuleScope Snowplow {
+            $script:SnowSchemaCache.Tables = @([pscustomobject]@{ name = 'incident' }, [pscustomobject]@{ name = 'cmdb_ci' })
+            $script:SnowSchemaCache.Fields.incident = @([pscustomobject]@{ element = 'number' }, [pscustomobject]@{ element = 'short_description' })
+            (Get-SnowCompletionValue -Kind Table -Word 'inc').CompletionText | Should -Be incident
+            (Get-SnowCompletionValue -Kind Field -Table incident -Word 'short').CompletionText | Should -Be short_description
+        }
+        $scriptText = 'Get-SnowRecord -Table inc'
+        (TabExpansion2 $scriptText $scriptText.Length).CompletionMatches.CompletionText | Should -Contain incident
+        $scriptText = 'Get-SnowRecord -Table incident -Fields short'
+        (TabExpansion2 $scriptText $scriptText.Length).CompletionMatches.CompletionText | Should -Contain short_description
     }
 }

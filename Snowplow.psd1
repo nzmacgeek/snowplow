@@ -6,7 +6,12 @@
     Description           = 'PowerShell module for ServiceNow administrators (REST Table API and now-sdk backends).'
     PowerShellVersion     = '7.2'
     CompatiblePSEditions  = @('Core')
-    FunctionsToExport     = @('Connect-Snowplow', 'Disconnect-Snowplow', 'Get-SnowplowConfiguration', 'Set-SnowplowConfiguration')
+    FunctionsToExport     = @(
+        'Connect-Snowplow', 'Disconnect-Snowplow', 'Get-SnowplowConfiguration', 'Set-SnowplowConfiguration',
+        'Get-SnowRecord', 'New-SnowRecord', 'Set-SnowRecord', 'Remove-SnowRecord',
+        'Get-SnowTable', 'Get-SnowDictionary', 'Get-SnowCI', 'Get-SnowCIRelationship',
+        'Export-SnowRecord', 'Compare-SnowRecord'
+    )
     CmdletsToExport       = @()
     VariablesToExport     = @()
     AliasesToExport       = @()
