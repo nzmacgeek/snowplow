@@ -5,7 +5,7 @@
 [![PowerShell Gallery Downloads](https://img.shields.io/powershellgallery/dt/Snowplow?label=downloads)](https://www.powershellgallery.com/packages/Snowplow)
 
 Snowplow is a PowerShell module for reading and administering ServiceNow instances
-through the Table API.
+through the Table API. This was built with AI assistance, but reviewed and tested by a ServiceNow admin. 
 
 ## Quick start
 
