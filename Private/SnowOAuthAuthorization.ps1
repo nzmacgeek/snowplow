@@ -2,12 +2,10 @@ function Get-SnowOAuthProofKey {
     [CmdletBinding()]
     param()
 
-    $verifierBytes = [byte[]]::new(32)
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($verifierBytes)
+    $verifierBytes = [System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
     $verifier = [Convert]::ToBase64String($verifierBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
     $challengeBytes = [System.Security.Cryptography.SHA256]::HashData([Text.Encoding]::ASCII.GetBytes($verifier))
-    $stateBytes = [byte[]]::new(32)
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($stateBytes)
+    $stateBytes = [System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 
     [pscustomobject]@{
         Verifier  = $verifier
@@ -37,6 +35,23 @@ function Get-SnowOAuthAuthorizationUri {
     [uri]::new($BaseUri, "/oauth_auth.do?$query")
 }
 
+function Test-SnowOAuthState {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][byte[]]$Left,
+        [Parameter(Mandatory)][byte[]]$Right
+    )
+
+    $difference = $Left.Length -bxor $Right.Length
+    $length = [Math]::Max($Left.Length, $Right.Length)
+    for ($i = 0; $i -lt $length; $i++) {
+        $leftByte = if ($i -lt $Left.Length) { $Left[$i] } else { 0 }
+        $rightByte = if ($i -lt $Right.Length) { $Right[$i] } else { 0 }
+        $difference = $difference -bor ($leftByte -bxor $rightByte)
+    }
+    $difference -eq 0
+}
+
 function ConvertFrom-SnowOAuthCallback {
     [CmdletBinding()]
     param(
@@ -58,8 +73,7 @@ function ConvertFrom-SnowOAuthCallback {
     }
     $expectedBytes = [Text.Encoding]::UTF8.GetBytes($ExpectedState)
     $actualBytes = [Text.Encoding]::UTF8.GetBytes($state)
-    if ($expectedBytes.Length -ne $actualBytes.Length -or
-        -not [System.Security.Cryptography.CryptographicOperations]::FixedTimeEquals($expectedBytes, $actualBytes)) {
+    if (-not (Test-SnowOAuthState -Left $expectedBytes -Right $actualBytes)) {
         throw [System.InvalidOperationException]::new('The authorization callback state did not match. Sign-in was cancelled.')
     }
 
@@ -78,17 +92,16 @@ function Open-SnowOAuthBrowser {
 
     try {
         switch (Get-SnowplowPlatform) {
-            Windows { Start-Process -FilePath $Uri.AbsoluteUri -ErrorAction Stop | Out-Null }
-            MacOS { Start-Process -FilePath 'open' -ArgumentList $Uri.AbsoluteUri -ErrorAction Stop | Out-Null }
+            Windows { Start-Process -FilePath $Uri.AbsoluteUri -PassThru -ErrorAction Stop }
+            MacOS { Start-Process -FilePath 'open' -ArgumentList $Uri.AbsoluteUri -PassThru -ErrorAction Stop }
             Linux {
                 if (-not ($env:DISPLAY -or $env:WAYLAND_DISPLAY) -or -not (Get-Command xdg-open -ErrorAction SilentlyContinue)) {
                     return $false
                 }
-                Start-Process -FilePath 'xdg-open' -ArgumentList $Uri.AbsoluteUri -ErrorAction Stop | Out-Null
+                Start-Process -FilePath 'xdg-open' -ArgumentList $Uri.AbsoluteUri -PassThru -ErrorAction Stop
             }
             default { return $false }
         }
-        $true
     }
     catch {
         $false
@@ -131,33 +144,73 @@ function Invoke-SnowOAuthAuthorization {
         $callbackUrl = Read-SnowOAuthCallbackUrl
     }
     else {
-        $listener = [System.Net.HttpListener]::new()
-        $listener.Prefixes.Add("http://127.0.0.1:$RedirectPort/")
+        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $RedirectPort)
         try {
             $listener.Start()
         }
         catch {
-            $listener.Close()
-            throw [System.InvalidOperationException]::new("Could not listen on redirect port $RedirectPort. Choose another port with -RedirectPort.")
+            $listener.Stop()
+            throw [System.InvalidOperationException]::new("Could not listen on loopback redirect port $RedirectPort. Choose another port with -RedirectPort.")
         }
 
         try {
-            if (Open-SnowOAuthBrowser -Uri $authorizationUri) {
-                $callbackTask = $listener.GetContextAsync()
-                if (-not $callbackTask.Wait([TimeSpan]::FromSeconds($TimeoutSeconds))) {
+            $browserProcess = Open-SnowOAuthBrowser -Uri $authorizationUri
+            if ($browserProcess) {
+                $callbackTask = $listener.AcceptTcpClientAsync()
+                $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+                $browserFailed = $false
+                while (-not $callbackTask.IsCompleted) {
+                    $hasExited = $browserProcess.PSObject.Properties['HasExited']
+                    if ($hasExited -and $browserProcess.HasExited -and
+                        $browserProcess.PSObject.Properties['ExitCode'] -and $browserProcess.ExitCode -ne 0) {
+                        $browserFailed = $true
+                        break
+                    }
+                    $remaining = [TimeSpan]::FromSeconds($TimeoutSeconds) - $stopwatch.Elapsed
+                    if ($remaining -le [TimeSpan]::Zero) { break }
+                    $waitTime = [TimeSpan]::FromMilliseconds([Math]::Min(100, $remaining.TotalMilliseconds))
+                    $null = $callbackTask.Wait($waitTime)
+                }
+                if ($browserFailed) {
+                    Write-Host "Could not open a browser. Open this URL to sign in:`n$authorizationUri"
+                    $callbackUrl = Read-SnowOAuthCallbackUrl
+                }
+                elseif (-not $callbackTask.IsCompleted) {
                     throw [System.TimeoutException]::new('Timed out waiting for the ServiceNow sign-in callback. Run Connect-Snowplow again.')
                 }
-                $context = $callbackTask.GetAwaiter().GetResult()
-                try {
-                    $callbackUrl = $context.Request.Url.AbsoluteUri
-                    $responseText = '<!doctype html><html><head><title>Snowplow</title></head><body>You can close this window and return to PowerShell.</body></html>'
-                    $responseBytes = [Text.Encoding]::UTF8.GetBytes($responseText)
-                    $context.Response.ContentType = 'text/html; charset=utf-8'
-                    $context.Response.ContentLength64 = $responseBytes.Length
-                    $context.Response.OutputStream.Write($responseBytes, 0, $responseBytes.Length)
-                }
-                finally {
-                    $context.Response.Close()
+                else {
+                    $client = $callbackTask.GetAwaiter().GetResult()
+                    try {
+                        $client.ReceiveTimeout = 5000
+                        $reader = [System.IO.StreamReader]::new($client.GetStream())
+                        $requestLine = $reader.ReadLine()
+                        $headersComplete = $false
+                        while ($null -ne ($header = $reader.ReadLine())) {
+                            if ($header.Length -eq 0) {
+                                $headersComplete = $true
+                                break
+                            }
+                        }
+                        $requestParts = if ($requestLine) { $requestLine -split ' ' } else { @() }
+                        if (-not $headersComplete -or $requestParts.Count -lt 2 -or
+                            -not $requestParts[1].StartsWith('/')) {
+                            throw [System.InvalidOperationException]::new('The authorization callback request was invalid.')
+                        }
+                        $callbackUrl = ([uri]::new($redirectUri, $requestParts[1])).AbsoluteUri
+                        $responseText = '<!doctype html><html><head><title>Snowplow</title></head><body>You can close this window and return to PowerShell.</body></html>'
+                        $responseBytes = [Text.Encoding]::UTF8.GetBytes($responseText)
+                        $responseHeader = "HTTP/1.1 200 OK`r`nContent-Type: text/html; charset=utf-8`r`nContent-Length: $($responseBytes.Length)`r`nConnection: close`r`n`r`n"
+                        $stream = $client.GetStream()
+                        $headerBytes = [Text.Encoding]::ASCII.GetBytes($responseHeader)
+                        try {
+                            $stream.Write($headerBytes, 0, $headerBytes.Length)
+                            $stream.Write($responseBytes, 0, $responseBytes.Length)
+                        }
+                        catch { $null = $_ }
+                    }
+                    finally {
+                        $client.Close()
+                    }
                 }
             }
             else {
@@ -167,7 +220,6 @@ function Invoke-SnowOAuthAuthorization {
         }
         finally {
             $listener.Stop()
-            $listener.Close()
         }
     }
 

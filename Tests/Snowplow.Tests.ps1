@@ -362,6 +362,15 @@ Describe 'Connect-Snowplow' -Tag 'Unit' {
             }
         }
 
+        It 'compares matching callback states successfully' {
+            InModuleScope Snowplow {
+                $expectedBytes = [Text.Encoding]::UTF8.GetBytes('expected')
+                $actualBytes = [Text.Encoding]::UTF8.GetBytes('expected')
+                Test-SnowOAuthState -Left $expectedBytes -Right $actualBytes | Should -BeTrue
+                Test-SnowOAuthState -Left $expectedBytes -Right ([Text.Encoding]::UTF8.GetBytes('wrong')) | Should -BeFalse
+            }
+        }
+
         It 'supports manual completion when browser launch is disabled' {
             Mock -ModuleName Snowplow Get-SnowOAuthProofKey {
                 [pscustomobject]@{ Verifier = 'verifier'; Challenge = 'challenge'; State = 'state' }
@@ -425,20 +434,93 @@ Describe 'Connect-Snowplow' -Tag 'Unit' {
             } | Should -Throw '*Timed out waiting*'
         }
 
+        It 'accepts callbacks through an unprivileged loopback listener' {
+            Mock -ModuleName Snowplow Get-SnowOAuthProofKey {
+                [pscustomobject]@{ Verifier = 'verifier'; Challenge = 'challenge'; State = 'state' }
+            }
+            Mock -ModuleName Snowplow Open-SnowOAuthBrowser {
+                $query = [System.Web.HttpUtility]::ParseQueryString($Uri.Query)
+                $redirect = [uri]$query['redirect_uri']
+                $client = [System.Net.Sockets.TcpClient]::new()
+                $client.Connect($redirect.Host, $redirect.Port)
+                $stream = $client.GetStream()
+                $request = "GET /callback?code=local-code&state=state HTTP/1.1`r`nHost: 127.0.0.1`r`n`r`n"
+                $requestBytes = [Text.Encoding]::ASCII.GetBytes($request)
+                $stream.Write($requestBytes, 0, $requestBytes.Length)
+                $stream.Flush()
+                $true
+            }
+            $portListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+            $portListener.Start()
+            $port = ([System.Net.IPEndPoint]$portListener.LocalEndpoint).Port
+            $portListener.Stop()
+
+            $authorization = InModuleScope Snowplow -Parameters @{ Port = $port } {
+                Invoke-SnowOAuthAuthorization -BaseUri ([uri]'https://dev1.service-now.com/') `
+                    -ClientId cid -RedirectPort $Port -TimeoutSeconds 5
+            }
+            $authorization.Code | Should -Be 'local-code'
+        }
+
+        It 'falls back to manual completion when the browser opener exits unsuccessfully' {
+            Mock -ModuleName Snowplow Get-SnowOAuthProofKey {
+                [pscustomobject]@{ Verifier = 'verifier'; Challenge = 'challenge'; State = 'state' }
+            }
+            Mock -ModuleName Snowplow Open-SnowOAuthBrowser {
+                [pscustomobject]@{ HasExited = $true; ExitCode = 1 }
+            }
+            Mock -ModuleName Snowplow Read-Host { "http://127.0.0.1:$port/callback?code=manual-code&state=state" }
+            $portListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+            $portListener.Start()
+            $port = ([System.Net.IPEndPoint]$portListener.LocalEndpoint).Port
+            $portListener.Stop()
+
+            $authorization = InModuleScope Snowplow -Parameters @{ Port = $port } {
+                Invoke-SnowOAuthAuthorization -BaseUri ([uri]'https://dev1.service-now.com/') `
+                    -ClientId cid -RedirectPort $Port -TimeoutSeconds 5
+            }
+            $authorization.Code | Should -Be 'manual-code'
+            Should -Invoke -ModuleName Snowplow Read-Host -Times 1 -Exactly
+        }
+
         It 'clears a rejected refresh token and asks the user to sign in again' {
-            Mock -ModuleName Snowplow Invoke-RestMethod { throw 'refresh-token-must-not-leak' } -ParameterFilter { $Uri.AbsolutePath -eq '/oauth_token.do' }
+            Mock -ModuleName Snowplow Invoke-RestMethod {
+                throw (New-HttpError 400 '{"error":"invalid_grant","error_description":"refresh-token-must-not-leak"}')
+            } -ParameterFilter { $Uri.AbsolutePath -eq '/oauth_token.do' }
             Mock -ModuleName Snowplow Clear-SnowOAuthRefreshToken {}
             $refresh = ConvertTo-SecureString 'refresh-token-must-not-leak' -AsPlainText -Force
+            $session = [pscustomobject]@{
+                BaseUri = [uri]'https://dev1.service-now.com/'
+                ClientId = 'cid'
+                RefreshToken = $refresh
+            }
             {
-                InModuleScope Snowplow -Parameters @{ RefreshToken = $refresh } {
-                    Request-SnowOAuthToken -Session ([pscustomobject]@{
-                        BaseUri = [uri]'https://dev1.service-now.com/'
-                        ClientId = 'cid'
-                        RefreshToken = $RefreshToken
-                    })
+                InModuleScope Snowplow -Parameters @{ Session = $session } {
+                    Request-SnowOAuthToken -Session $Session
                 }
             } | Should -Throw '*Run Connect-Snowplow again to sign in*'
+            $session.RefreshToken | Should -BeNullOrEmpty
             Should -Invoke -ModuleName Snowplow Clear-SnowOAuthRefreshToken -Times 1 -Exactly
+        }
+
+        It 'preserves a refresh token when the token service is temporarily unavailable' {
+            Mock -ModuleName Snowplow Invoke-RestMethod {
+                throw (New-HttpError 503 '{"error":"temporarily_unavailable","detail":"refresh-token-must-not-leak"}')
+            } -ParameterFilter { $Uri.AbsolutePath -eq '/oauth_token.do' }
+            Mock -ModuleName Snowplow Clear-SnowOAuthRefreshToken {}
+            $refresh = ConvertTo-SecureString 'refresh-token-must-not-leak' -AsPlainText -Force
+            $session = [pscustomobject]@{
+                BaseUri = [uri]'https://dev1.service-now.com/'
+                ClientId = 'cid'
+                RefreshToken = $refresh
+            }
+            $errorRecord = InModuleScope Snowplow -Parameters @{ Session = $session } {
+                try { Request-SnowOAuthToken -Session $Session } catch { $_ }
+            }
+            $errorRecord.Exception.Message | Should -BeLike '*retained; retry*'
+            $errorRecord.Exception.Message | Should -Not -Match 'refresh-token-must-not-leak'
+            [System.Net.NetworkCredential]::new('', $session.RefreshToken).Password | Should -Be 'refresh-token-must-not-leak'
+            Should -Invoke -ModuleName Snowplow Clear-SnowOAuthRefreshToken -Times 0 -Exactly
         }
 
         It 'persists refresh tokens in the per-user token store' {

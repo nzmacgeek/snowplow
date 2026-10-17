@@ -1,3 +1,22 @@
+function Get-SnowOAuthErrorCode {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][System.Management.Automation.ErrorRecord]$ErrorRecord)
+
+    $errorBody = if ($ErrorRecord.ErrorDetails) { $ErrorRecord.ErrorDetails.Message } else { $null }
+    $response = if ($ErrorRecord.Exception.PSObject.Properties['Response']) { $ErrorRecord.Exception.Response } else { $null }
+    if (-not $errorBody -and $response -and $response.PSObject.Properties['Content']) {
+        try { $errorBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() }
+        catch { $errorBody = $null }
+    }
+    if (-not $errorBody) { return $null }
+    try {
+        $payload = ConvertFrom-Json -InputObject $errorBody -ErrorAction Stop
+        if ($payload.error -is [string]) { return $payload.error }
+    }
+    catch { return $null }
+    $null
+}
+
 function Request-SnowOAuthToken {
     <#
     .SYNOPSIS
@@ -53,7 +72,7 @@ function Request-SnowOAuthToken {
             -ErrorAction Stop
     }
     catch {
-        if ($refreshing) {
+        if ($refreshing -and (Get-SnowOAuthErrorCode -ErrorRecord $_) -eq 'invalid_grant') {
             $Session.RefreshToken = $null
             Clear-SnowOAuthRefreshToken -BaseUri $Session.BaseUri -ClientId $clientId
             throw [System.InvalidOperationException]::new('The saved OAuth refresh token was rejected. Run Connect-Snowplow again to sign in.')
@@ -63,6 +82,9 @@ function Request-SnowOAuthToken {
         }
         else { $null }
         $statusText = if ($status) { " (HTTP $status)" } else { '' }
+        if ($refreshing) {
+            throw [System.InvalidOperationException]::new("OAuth refresh request failed$statusText. The saved refresh token was retained; retry the request.")
+        }
         throw [System.InvalidOperationException]::new("OAuth token request failed$statusText. Check the OAuth application, redirect URI, and scopes.")
     }
     finally { $form = $null }
