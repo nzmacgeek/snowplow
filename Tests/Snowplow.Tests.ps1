@@ -786,6 +786,14 @@ Describe 'Linux portability' -Tag 'Unit' {
     }
 }
 
+Describe 'macOS portability' -Tag 'Unit' {
+    It 'writes profile files with restrictive permissions' -Skip:(-not $IsMacOS) {
+        $profileDirectory = Join-Path $TestDrive 'private-config'
+        Mock -ModuleName Snowplow Get-SnowProfileStorePath { Join-Path $profileDirectory 'profiles.json' }
+        { Add-SnowplowProfile -Name macos -Instance dev1 } | Should -Not -Throw
+    }
+}
+
 Describe 'Invoke-SnowRequest' -Tag 'Unit' {
     BeforeEach {
         Mock -ModuleName Snowplow Start-SnowSleep {}
