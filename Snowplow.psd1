@@ -2,7 +2,7 @@
     RootModule            = 'Snowplow.psm1'
     ModuleVersion         = '0.1.0'
     GUID                  = '6f0f2d0e-3c55-4b0e-9d52-5a1f3b7c8e21'
-    Author                = 'nzmacgeek'
+    Author                = 'William McGrath (nzmacgeek)'
     Description           = 'PowerShell module for ServiceNow administrators (REST Table API and now-sdk backends).'
     PowerShellVersion     = '7.2'
     CompatiblePSEditions  = @('Core')
@@ -21,7 +21,7 @@
     AliasesToExport       = @('snow', 'snowc', 'snowl', 'snowo', 'Where-SnowField')
     PrivateData           = @{ PSData = @{
             Tags = @('ServiceNow', 'REST', 'Admin')
-            Prerelease = ''
+            Prerelease = 'beta1'
         }
     }
 }
