@@ -71,7 +71,8 @@ function Protect-SnowplowPath {
     else {
         '600'
     }
-    & chmod $mode -- $Path
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    & chmod $mode $fullPath
     if ($LASTEXITCODE -ne 0) {
         throw [System.IO.IOException]::new("Could not restrict permissions on '$Path'.")
     }
