@@ -273,8 +273,8 @@ Describe 'Connect-Snowplow' -Tag 'Unit' {
         Set-SnowplowConfiguration -DefaultBackend Rest
     }
 
-    It 'requires a client credential for OAuth' {
-        { Connect-Snowplow -Instance dev1 } | Should -Throw '*OAuth requires*'
+    It 'requires a client ID for default authorization code OAuth' {
+        { Connect-Snowplow -Instance dev1 } | Should -Throw '*Authorization code requires -ClientId*'
     }
     It 'requires -Credential for Basic and warns' {
         { Connect-Snowplow -Instance dev1 -AuthMethod Basic -WarningAction SilentlyContinue } | Should -Throw '*Basic auth requires*'
@@ -314,6 +314,11 @@ Describe 'Connect-Snowplow' -Tag 'Unit' {
         $null = Connect-Snowplow -Instance dev1 -ClientCredential $Client -Credential $Cred -WarningAction SilentlyContinue
         Should -Invoke -ModuleName Snowplow Invoke-RestMethod -ParameterFilter { $Body.grant_type -eq 'password' -and $Body.username -eq 'user' }
     }
+    It 'defaults to interactive authorization code and requires a client ID' {
+        { Connect-Snowplow -Instance dev1 } | Should -Throw '*Authorization code requires -ClientId*'
+        { Connect-Snowplow -Instance dev1 -ClientId cid -ClientCredential $Client } |
+            Should -Throw '*cannot be combined*'
+    }
     It 'resolves credentials from SecretManagement' {
         function global:Get-Secret { param($Name, $Vault) }
         Mock -ModuleName Snowplow Get-Secret { $Cred }
@@ -321,6 +326,140 @@ Describe 'Connect-Snowplow' -Tag 'Unit' {
         $null = Connect-Snowplow -Instance dev1 -AuthMethod Basic -CredentialSecretName S -Vault V -WarningAction SilentlyContinue
         Should -Invoke -ModuleName Snowplow Get-Secret -ParameterFilter { $Name -eq 'S' -and $Vault -eq 'V' }
         Remove-Item function:global:Get-Secret
+    }
+
+    Describe 'OAuth authorization code' -Tag 'Unit' {
+        It 'generates an S256 challenge and state from cryptographic random values' {
+            InModuleScope Snowplow {
+                $proof = Get-SnowOAuthProofKey
+                $expected = [Convert]::ToBase64String([System.Security.Cryptography.SHA256]::HashData([Text.Encoding]::ASCII.GetBytes($proof.Verifier))).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+                $proof.Verifier.Length | Should -BeGreaterOrEqual 43
+                $proof.Challenge | Should -Be $expected
+                $proof.State | Should -Not -Be $proof.Verifier
+            }
+        }
+
+        It 'builds an escaped ServiceNow authorization URL with PKCE and state' {
+            InModuleScope Snowplow {
+                $uri = Get-SnowOAuthAuthorizationUri -BaseUri ([uri]'https://dev1.service-now.com/') `
+                    -ClientId 'client id' -RedirectUri ([uri]'http://127.0.0.1:8765/callback') `
+                    -State 'state-value' -Challenge 'challenge-value'
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                $uri.AbsolutePath | Should -Be '/oauth_auth.do'
+                $query['client_id'] | Should -Be 'client id'
+                $query['redirect_uri'] | Should -Be 'http://127.0.0.1:8765/callback'
+                $query['state'] | Should -Be 'state-value'
+                $query['code_challenge'] | Should -Be 'challenge-value'
+                $query['code_challenge_method'] | Should -Be 'S256'
+            }
+        }
+
+        It 'rejects callbacks with a mismatched state' {
+            InModuleScope Snowplow {
+                { ConvertFrom-SnowOAuthCallback -CallbackUrl 'http://127.0.0.1:8765/callback?code=sample&state=wrong' `
+                        -RedirectUri ([uri]'http://127.0.0.1:8765/callback') -ExpectedState 'expected' } |
+                    Should -Throw '*state did not match*'
+            }
+        }
+
+        It 'supports manual completion when browser launch is disabled' {
+            Mock -ModuleName Snowplow Get-SnowOAuthProofKey {
+                [pscustomobject]@{ Verifier = 'verifier'; Challenge = 'challenge'; State = 'state' }
+            }
+            Mock -ModuleName Snowplow Read-Host { 'http://127.0.0.1:8765/callback?code=manual-code&state=state' }
+            $authorization = InModuleScope Snowplow {
+                Invoke-SnowOAuthAuthorization -BaseUri ([uri]'https://dev1.service-now.com/') `
+                    -ClientId cid -RedirectPort 8765 -NoBrowser
+            }
+            $authorization.Code | Should -Be 'manual-code'
+            $authorization.RedirectUri.AbsoluteUri | Should -Be 'http://127.0.0.1:8765/callback'
+            Should -Invoke -ModuleName Snowplow Read-Host -Times 1 -Exactly
+        }
+
+        It 'exchanges an authorization code and refreshes using the returned refresh token' {
+            $script:oauthForms = @()
+            Mock -ModuleName Snowplow Read-SnowOAuthRefreshToken { $null }
+            Mock -ModuleName Snowplow Invoke-SnowOAuthAuthorization {
+                [pscustomobject]@{ Code = 'authorization-code'; Verifier = 'pkce-verifier'; RedirectUri = [uri]'http://127.0.0.1:8765/callback' }
+            }
+            Mock -ModuleName Snowplow Write-SnowOAuthRefreshToken {}
+            Mock -ModuleName Snowplow Invoke-RestMethod {
+                $script:oauthForms += $Body
+                if ($Body.grant_type -eq 'authorization_code') {
+                    [pscustomobject]@{ access_token = 'access-one'; refresh_token = 'refresh-one'; expires_in = 1800 }
+                }
+                else {
+                    [pscustomobject]@{ access_token = 'access-two'; refresh_token = 'refresh-two'; expires_in = 1800 }
+                }
+            } -ParameterFilter { $Uri.AbsolutePath -eq '/oauth_token.do' }
+            Mock -ModuleName Snowplow Invoke-RestMethod { [pscustomobject]@{ result = @() } } -ParameterFilter { $Uri.AbsolutePath -like '/api/*' }
+
+            $session = Connect-Snowplow -Instance dev1 -ClientId cid
+            $session.AuthMethod | Should -Be OAuth
+            Should -Invoke -ModuleName Snowplow Invoke-RestMethod -Times 1 -Exactly -ParameterFilter {
+                $Uri.AbsolutePath -eq '/oauth_token.do' -and $Body.grant_type -eq 'authorization_code' -and
+                $Body.code -eq 'authorization-code' -and $Body.code_verifier -eq 'pkce-verifier' -and
+                $Body.redirect_uri -eq 'http://127.0.0.1:8765/callback'
+            }
+            Should -Invoke -ModuleName Snowplow Write-SnowOAuthRefreshToken -Times 1 -Exactly
+            InModuleScope Snowplow { $script:SnowplowSession.ExpiresAt = [datetime]::UtcNow.AddSeconds(-1) }
+            InModuleScope Snowplow { Invoke-SnowRequest -Table incident | Out-Null }
+            Should -Invoke -ModuleName Snowplow Invoke-RestMethod -Times 1 -Exactly -ParameterFilter {
+                $Uri.AbsolutePath -eq '/oauth_token.do' -and $Body.grant_type -eq 'refresh_token' -and
+                $Body.refresh_token -eq 'refresh-one'
+            }
+            Should -Invoke -ModuleName Snowplow Write-SnowOAuthRefreshToken -Times 2 -Exactly
+        }
+
+        It 'times out cleanly while waiting for a browser callback' {
+            Mock -ModuleName Snowplow Open-SnowOAuthBrowser { $true }
+            $portListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+            $portListener.Start()
+            $port = ([System.Net.IPEndPoint]$portListener.LocalEndpoint).Port
+            $portListener.Stop()
+            {
+                InModuleScope Snowplow -Parameters @{ Port = $port } {
+                    Invoke-SnowOAuthAuthorization -BaseUri ([uri]'https://dev1.service-now.com/') `
+                        -ClientId cid -RedirectPort $Port -TimeoutSeconds 1
+                }
+            } | Should -Throw '*Timed out waiting*'
+        }
+
+        It 'clears a rejected refresh token and asks the user to sign in again' {
+            Mock -ModuleName Snowplow Invoke-RestMethod { throw 'refresh-token-must-not-leak' } -ParameterFilter { $Uri.AbsolutePath -eq '/oauth_token.do' }
+            Mock -ModuleName Snowplow Clear-SnowOAuthRefreshToken {}
+            $refresh = ConvertTo-SecureString 'refresh-token-must-not-leak' -AsPlainText -Force
+            {
+                InModuleScope Snowplow -Parameters @{ RefreshToken = $refresh } {
+                    Request-SnowOAuthToken -Session ([pscustomobject]@{
+                        BaseUri = [uri]'https://dev1.service-now.com/'
+                        ClientId = 'cid'
+                        RefreshToken = $RefreshToken
+                    })
+                }
+            } | Should -Throw '*Run Connect-Snowplow again to sign in*'
+            Should -Invoke -ModuleName Snowplow Clear-SnowOAuthRefreshToken -Times 1 -Exactly
+        }
+
+        It 'persists refresh tokens in the per-user token store' {
+            $script:tokenDataPath = Join-Path ([System.IO.Path]::GetTempPath()) "snowplow-oauth-$([guid]::NewGuid())"
+            try {
+                Mock -ModuleName Snowplow Get-SnowplowDirectories {
+                    [pscustomobject]@{ Data = $script:tokenDataPath }
+                }
+                InModuleScope Snowplow {
+                    $refresh = ConvertTo-SecureString 'persisted-refresh-token' -AsPlainText -Force
+                    Write-SnowOAuthRefreshToken -BaseUri ([uri]'https://dev1.service-now.com/') -ClientId cid -RefreshToken $refresh
+                    $loaded = Read-SnowOAuthRefreshToken -BaseUri ([uri]'https://dev1.service-now.com/') -ClientId cid
+                    [System.Net.NetworkCredential]::new('', $loaded).Password | Should -Be 'persisted-refresh-token'
+                    Clear-SnowOAuthRefreshToken -BaseUri ([uri]'https://dev1.service-now.com/') -ClientId cid
+                    (Test-Path -LiteralPath (Get-SnowOAuthTokenStorePath)) | Should -BeFalse
+                }
+            }
+            finally {
+                Remove-Item -LiteralPath $script:tokenDataPath -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
     It 'does not keep a session when validation fails' {
         Mock -ModuleName Snowplow Invoke-RestMethod { throw (New-HttpError 401 '{"error":{"message":"User Not Authenticated"},"status":"failure"}') }

@@ -3,14 +3,15 @@ function Connect-Snowplow {
     .SYNOPSIS
         Connects to a ServiceNow instance and stores the session in module scope.
     .DESCRIPTION
-        OAuth is the default and recommended method (client_credentials grant when only
-        -ClientCredential is supplied; legacy password grant if -Credential is added too).
-        Basic auth is supported for legacy use only, must be requested explicitly and warns.
-        Secrets are only accepted as PSCredential or SecretManagement secret names.
+        Authorization code with PKCE is the default interactive grant and opens a browser.
+        Use -ClientCredentials for unattended automation with a dedicated service account.
+        Legacy password and Basic authentication are retained for compatibility.
     .EXAMPLE
-        Connect-Snowplow -Instance dev12345 -ClientCredential (Get-Credential)
+        Connect-Snowplow -Instance dev12345 -ClientId '<oauth-client-id>'
     .EXAMPLE
-        Connect-Snowplow -Instance dev12345 -ClientCredentialSecretName SnowClient -Vault MyVault
+        Connect-Snowplow -Instance dev12345 -ClientCredential (Get-Credential) -ClientCredentials
+    .EXAMPLE
+        Connect-Snowplow -Instance dev12345 -ClientCredentialSecretName SnowClient -Vault MyVault -ClientCredentials
     #>
     [CmdletBinding()]
     [OutputType([pscustomobject])]
@@ -19,6 +20,11 @@ function Connect-Snowplow {
         [ArgumentCompleter({ param($commandName, $parameterName, $wordToComplete) & (Get-Module Snowplow) { param($word) Get-SnowCompletionValue -Kind Profile -Word $word } $wordToComplete })]
         [string]$Profile,
         [ValidateSet('OAuth', 'Basic')][string]$AuthMethod = 'OAuth',
+        [string]$ClientId,
+        [switch]$AuthorizationCode,
+        [switch]$ClientCredentials,
+        [ValidateRange(1024, 65535)][int]$RedirectPort = 8765,
+        [switch]$NoBrowser,
         # OAuth client id (UserName) and client secret (Password).
         [pscredential]$ClientCredential,
         # Basic auth user, or the user for the legacy OAuth password grant.
@@ -41,6 +47,27 @@ function Connect-Snowplow {
         if (-not $PSBoundParameters.ContainsKey('ClientCredentialSecretName') -and -not $PSBoundParameters.ContainsKey('ClientCredential') -and -not $AccessToken) { $ClientCredentialSecretName = $storedProfile.ClientCredentialSecretName }
         if (-not $PSBoundParameters.ContainsKey('CredentialSecretName') -and -not $PSBoundParameters.ContainsKey('Credential') -and -not $AccessToken) { $CredentialSecretName = $storedProfile.CredentialSecretName }
         if (-not $PSBoundParameters.ContainsKey('Vault')) { $Vault = $storedProfile.Vault }
+    }
+
+    if ($AuthorizationCode -and $ClientCredentials) {
+        throw [System.ArgumentException]::new('Choose either -AuthorizationCode or -ClientCredentials, not both.')
+    }
+    if ($AuthMethod -eq 'Basic' -and ($AuthorizationCode -or $ClientId -or $ClientCredentials)) {
+        throw [System.ArgumentException]::new('OAuth grant parameters cannot be combined with -AuthMethod Basic.')
+    }
+    if (($AuthorizationCode -or $ClientId) -and ($ClientCredential -or $ClientCredentialSecretName -or $Credential -or $CredentialSecretName -or $AccessToken)) {
+        throw [System.ArgumentException]::new('Authorization code cannot be combined with client credentials, user credentials, or -AccessToken.')
+    }
+    $useAuthorizationCode = $AuthMethod -eq 'OAuth' -and (
+        $AuthorizationCode -or $ClientId -or
+        (-not $ClientCredentials -and -not $ClientCredential -and -not $ClientCredentialSecretName -and
+            -not $Credential -and -not $CredentialSecretName -and -not $AccessToken)
+    )
+    if ($ClientCredentials -and (-not $ClientCredential -and -not $ClientCredentialSecretName -or $Credential -or $CredentialSecretName)) {
+        throw [System.ArgumentException]::new('-ClientCredentials requires a client credential and cannot be combined with a user credential.')
+    }
+    if ($useAuthorizationCode -and -not $ClientId) {
+        throw [System.ArgumentException]::new('Authorization code requires -ClientId. For unattended use, specify -ClientCredentials and a client credential.')
     }
 
     if ($AccessToken -and ($AuthMethod -eq 'Basic' -or $ClientCredential -or $ClientCredentialSecretName -or $Credential -or $CredentialSecretName)) {
@@ -79,7 +106,7 @@ function Connect-Snowplow {
         }
         Write-Warning 'Basic authentication is deprecated for ServiceNow integrations. Prefer OAuth (-ClientCredential).'
     }
-    else {
+    elseif (-not $useAuthorizationCode) {
         if (-not $ClientCredential -and -not $AccessToken) {
             if ($Profile) {
                 $ClientCredential = Get-Credential -Message "Enter the OAuth client credential for Snowplow profile '$Profile'"
@@ -107,6 +134,11 @@ function Connect-Snowplow {
         AuthMethod       = $AuthMethod
         Credential       = $Credential
         ClientCredential = $ClientCredential
+        ClientId         = if ($ClientId) { $ClientId } elseif ($ClientCredential) { $ClientCredential.UserName } else { $null }
+        GrantType        = if ($useAuthorizationCode) { 'authorization_code' } elseif ($Credential) { 'password' } else { 'client_credentials' }
+        RedirectPort     = $RedirectPort
+        NoBrowser        = [bool]$NoBrowser
+        RefreshToken     = $null
         AccessToken      = if ($AccessToken) { ConvertTo-SecureString -String $AccessToken -AsPlainText -Force } else { $null }
         ExpiresAt        = if ($AccessToken) { [datetime]::MaxValue } else { [datetime]::MinValue }
         ConnectedAt      = [datetime]::UtcNow
@@ -124,6 +156,12 @@ function Connect-Snowplow {
     }
     $script:SnowplowSession = $session
     try {
+        if ($useAuthorizationCode -and -not $AccessToken) {
+            $session.RefreshToken = Read-SnowOAuthRefreshToken -BaseUri $baseUri -ClientId $session.ClientId
+            $token = Request-SnowOAuthToken -Session $session
+            $session.AccessToken = $token.AccessToken
+            $session.ExpiresAt = $token.ExpiresAt
+        }
         if (-not $SkipValidation) {
             # Fetches a token (OAuth) and proves the credentials can reach the Table API.
             $null = Invoke-SnowRequest -Table sys_user -Fields sys_id -First 1 -PageSize 1

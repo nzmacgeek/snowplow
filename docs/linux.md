@@ -10,7 +10,7 @@ or otherwise obtain this module and import its manifest:
 
 ```powershell
 Import-Module ./Snowplow.psd1
-Connect-Snowplow -Instance dev12345 -ClientCredential (Get-Credential)
+Connect-Snowplow -Instance dev12345 -ClientId '<oauth-client-id>'
 ```
 
 For CI or another non-interactive process, provide an OAuth access token without
@@ -49,7 +49,7 @@ $client = Get-Credential -UserName '<oauth-client-id>' -Message 'OAuth client cr
 Set-Secret -Name SnowplowOAuth -Secret $client -Vault SnowplowVault
 Add-SnowplowProfile -Name dev -Instance dev12345 `
     -ClientCredentialSecretName SnowplowOAuth -Vault SnowplowVault -Environment Dev
-Connect-Snowplow -Profile dev
+Connect-Snowplow -Profile dev -ClientCredentials
 ```
 
 For automation using password-protected SecretStore, provision the vault

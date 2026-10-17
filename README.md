@@ -11,11 +11,15 @@ through the Table API.
 
 ```powershell
 Import-Module ./Snowplow.psd1
-Connect-Snowplow -Instance dev12345 -ClientCredential (Get-Credential)
+Connect-Snowplow -Instance dev12345 -ClientId '<oauth-client-id>'
+
+# For unattended automation, use a dedicated service account and secret store:
+$client = Get-Secret SnowplowOAuth
+Connect-Snowplow -Instance dev12345 -ClientCredential $client -ClientCredentials
 
 # Or save and reuse a named profile.
 Add-SnowplowProfile -Name dev -Instance dev12345 -ClientCredentialSecretName SnowClient -Environment Dev
-Connect-Snowplow -Profile dev
+Connect-Snowplow -Profile dev -ClientCredentials
 
 # Read records (output objects have the Snowplow.Record.<table> type name).
 Get-SnowRecord -Table incident -Query 'active=true' `
@@ -94,9 +98,11 @@ function prompt {
 
 ## Configuration and backends
 
-Sessions are stored in module scope and require HTTPS. OAuth is preferred;
-explicit Basic authentication emits a deprecation warning. Credentials can be
-provided as `PSCredential` objects or resolved from SecretManagement secret names.
+Sessions are stored in module scope and require HTTPS. Authorization code with
+PKCE is the default for interactive use; client credentials are intended for
+unattended automation using a dedicated service account. Explicit Basic
+authentication emits a deprecation warning. Credentials can be provided as
+`PSCredential` objects or resolved from SecretManagement secret names.
 Named profiles are stored per-user (`$HOME/.snowplow/profiles.json` on Unix-like
 systems, the platform-equivalent config path on Windows) and store only instance,
 auth, backend, environment, and optional SecretManagement secret references.
@@ -108,11 +114,11 @@ selects REST. Sdk requires Node.js and a Node-resolvable `now-sdk` module; when
 either is missing, the cmdlet reports a clear dependency message and recommends
 REST.
 
-### OAuth profile with SecretStore
+### Client credentials profile with SecretStore
 
-OAuth is the default authentication method. For repeat use, store the OAuth
-client ID and client secret as a `PSCredential` in a SecretManagement vault,
-then save only the secret name in a Snowplow profile:
+For unattended or repeat automation, store the OAuth client ID and client secret
+as a `PSCredential` in a SecretManagement vault, then save only the secret name
+in a Snowplow profile:
 
 ```powershell
 Install-Module Microsoft.PowerShell.SecretManagement -Scope CurrentUser
@@ -125,7 +131,7 @@ Set-Secret -Name SnowplowOAuth -Secret $oauthClient -Vault SnowplowVault
 
 Add-SnowplowProfile -Name dev -Instance dev12345 `
     -ClientCredentialSecretName SnowplowOAuth -Vault SnowplowVault -Environment Dev
-Connect-Snowplow -Profile dev
+Connect-Snowplow -Profile dev -ClientCredentials
 
 # Disconnect when finished.
 Disconnect-Snowplow
@@ -140,6 +146,9 @@ PowerShell environment used to connect.
 Linux-specific installation, XDG paths, permissions, proxy/TLS configuration,
 non-interactive credentials, and known limitations are described in
 [docs/linux.md](docs/linux.md).
+
+See [Authentication](docs/authentication.md) for grant selection, ServiceNow
+OAuth application setup, refresh-token persistence, and troubleshooting.
 
 On Linux, browser opening requires a graphical session and `xdg-open`; clipboard
 copying requires an available desktop clipboard utility. The optional Sdk

@@ -64,7 +64,7 @@ function Protect-SnowplowPath {
         [Parameter(Mandatory)][ValidateSet('Directory', 'File')][string]$Type
     )
 
-    if ((Get-SnowplowPlatform) -ne 'Linux') { return }
+    if ((Get-SnowplowPlatform) -notin @('Linux', 'MacOS')) { return }
     $mode = if ($Type -eq 'Directory') {
         '700'
     }
