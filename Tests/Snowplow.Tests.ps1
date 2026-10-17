@@ -1,8 +1,13 @@
 BeforeAll {
     $script:Root = Split-Path $PSScriptRoot -Parent
-    $script:PreexistingConvenienceAliases = @('snow', 'snowc', 'snowl', 'snowo') |
-        Where-Object { Get-Alias -Name $_ -ErrorAction SilentlyContinue }
     Import-Module (Join-Path $Root 'Snowplow.psd1') -Force
+
+    function script:Invoke-IsolatedPowerShell {
+        param([string]$Script)
+        $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Script))
+        & (Get-Process -Id $PID).Path -NoProfile -EncodedCommand $encodedCommand | Out-Null
+        $LASTEXITCODE
+    }
 
     function script:New-HttpError {
         param([int]$Status, [string]$Body, [hashtable]$Headers = @{})
@@ -108,13 +113,53 @@ Describe 'Module' -Tag 'Unit' {
     It 'creates no global session variables' {
         Get-Variable -Scope Global -Name 'Snowplow*' -ErrorAction SilentlyContinue | Should -BeNullOrEmpty
     }
-    It 'exports convenience aliases that do not replace built-in aliases' {
-        $script:PreexistingConvenienceAliases | Should -BeNullOrEmpty
-        (Get-Alias snow).Definition | Should -Be 'Get-SnowRecord'
-        (Get-Alias snowc).Definition | Should -Be 'Connect-Snowplow'
-        (Get-Alias snowl).Definition | Should -Be 'Get-SnowLink'
-        (Get-Alias snowo).Definition | Should -Be 'Open-SnowRecord'
-        (Get-Alias Where-SnowField).Definition | Should -Be 'Find-SnowField'
+    It 'preserves caller-local convenience aliases when imported' {
+        $modulePath = ConvertTo-Json (Join-Path $Root 'Snowplow.psd1') -Compress
+        $command = @"
+`$ErrorActionPreference = 'Stop'
+`$modulePath = $modulePath
+& {
+    Set-Alias -Name snow -Value Get-Date
+    Set-Alias -Name snowc -Value Get-Location
+    Set-Alias -Name snowl -Value Get-Item
+    Set-Alias -Name snowo -Value Get-ChildItem
+    Set-Alias -Name Where-SnowField -Value Where-Object
+    Import-Module `$modulePath -Force -NoClobber -Scope Local
+    `$expected = @{
+        snow = 'Get-Date'
+        snowc = 'Get-Location'
+        snowl = 'Get-Item'
+        snowo = 'Get-ChildItem'
+        'Where-SnowField' = 'Where-Object'
+    }
+    foreach (`$alias in `$expected.GetEnumerator()) {
+        if ((Get-Alias -Name `$alias.Key).Definition -ne `$alias.Value) {
+            throw "Alias `$(`$alias.Key) was overwritten."
+        }
+    }
+}
+"@
+        Invoke-IsolatedPowerShell $command | Should -Be 0
+    }
+    It 'exports the default convenience aliases in a clean session' {
+        $modulePath = ConvertTo-Json (Join-Path $Root 'Snowplow.psd1') -Compress
+        $command = @"
+`$ErrorActionPreference = 'Stop'
+Import-Module $modulePath
+`$expected = @{
+    snow = 'Get-SnowRecord'
+    snowc = 'Connect-Snowplow'
+    snowl = 'Get-SnowLink'
+    snowo = 'Open-SnowRecord'
+    'Where-SnowField' = 'Find-SnowField'
+}
+foreach (`$alias in `$expected.GetEnumerator()) {
+    if ((Get-Alias -Name `$alias.Key).Definition -ne `$alias.Value) {
+        throw "Alias `$(`$alias.Key) has an incorrect target."
+    }
+}
+"@
+        Invoke-IsolatedPowerShell $command | Should -Be 0
     }
 }
 

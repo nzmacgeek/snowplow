@@ -15,11 +15,18 @@ $private = @(Get-ChildItem -Path (Join-Path $PSScriptRoot 'Private') -Filter '*.
 $public = @(Get-ChildItem -Path (Join-Path $PSScriptRoot 'Public') -Filter '*.ps1' -ErrorAction SilentlyContinue)
 foreach ($file in $private + $public) { . $file.FullName }
 
-Set-Alias -Name snow -Value Get-SnowRecord
-Set-Alias -Name snowc -Value Connect-Snowplow
-Set-Alias -Name snowl -Value Get-SnowLink
-Set-Alias -Name snowo -Value Open-SnowRecord
-Set-Alias -Name Where-SnowField -Value Find-SnowField
+$convenienceAliases = @{
+    snow = 'Get-SnowRecord'
+    snowc = 'Connect-Snowplow'
+    snowl = 'Get-SnowLink'
+    snowo = 'Open-SnowRecord'
+    'Where-SnowField' = 'Find-SnowField'
+}
+foreach ($alias in $convenienceAliases.GetEnumerator()) {
+    if (-not (Get-Alias -Name $alias.Key -ErrorAction SilentlyContinue)) {
+        Set-Alias -Name $alias.Key -Value $alias.Value
+    }
+}
 
 $adminFunctions = @(
     'Get-SnowRecord', 'New-SnowRecord', 'Set-SnowRecord', 'Remove-SnowRecord',

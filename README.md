@@ -10,7 +10,7 @@ through the Table API.
 ## Quick start
 
 ```powershell
-Import-Module ./Snowplow.psd1
+Import-Module ./Snowplow.psd1 -NoClobber
 Connect-Snowplow -Instance dev12345 -ClientId '<oauth-client-id>'
 
 # For unattended automation, use a dedicated service account and secret store:
@@ -83,7 +83,8 @@ for `Connect-Snowplow`, `snowo` for `Open-SnowRecord`, and `snowl` for
 `Get-SnowLink`. They are module-scoped aliases with names that do not overlap
 PowerShell's built-in aliases on Windows, Linux, or macOS. Remove one after
 import with `Remove-Item Alias:snow`, or override it with
-`Set-Alias snow Get-SnowTable`.
+`Set-Alias snow Get-SnowTable`. Import with `-NoClobber` to preserve any
+same-named aliases already defined in the importing scope.
 
 `Get-SnowplowPromptSegment` returns a colored segment for the active profile (or
 instance); Prod is red and Test is yellow. It returns nothing when disconnected.
