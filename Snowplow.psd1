@@ -21,7 +21,7 @@
     AliasesToExport       = @('snow', 'snowc', 'snowl', 'snowo', 'Where-SnowField')
     PrivateData           = @{ PSData = @{
             Tags = @('ServiceNow', 'REST', 'Admin')
-            Prerelease = 'beta1'
+            Prerelease = 'beta2'
         }
     }
 }
