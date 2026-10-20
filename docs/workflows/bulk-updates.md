@@ -20,17 +20,24 @@ $targets = Get-SnowRecord -Table incident `
     -Fields sys_id,number,assignment_group -All
 "$($targets.Count) incidents selected"
 
+# Resolve the target group and stop unless the name is unambiguous
+$serviceDeskGroups = @(Get-SnowRecord -Table sys_user_group -Query 'name=Service Desk' -Fields sys_id -Limit 2)
+if ($serviceDeskGroups.Count -ne 1) {
+    throw "Expected exactly one Service Desk group, found $($serviceDeskGroups.Count)."
+}
+$assignmentGroupId = $serviceDeskGroups[0].sys_id
+
 # 2. Back up
 $targets | Export-SnowRecord -Format Json -Path ".\backup-$(Get-Date -Format yyyyMMdd-HHmm).json"
 
 # 3. Preview
 $targets | ForEach-Object {
-    Set-SnowRecord -Table incident -SysId $_.sys_id -Values @{ assignment_group = 'Service Desk' } -WhatIf
+    Set-SnowRecord -Table incident -SysId $_.sys_id -Values @{ assignment_group = $assignmentGroupId } -WhatIf
 }
 
 # 4. Apply
 $targets | ForEach-Object {
-    Set-SnowRecord -Table incident -SysId $_.sys_id -Values @{ assignment_group = 'Service Desk' }
+    Set-SnowRecord -Table incident -SysId $_.sys_id -Values @{ assignment_group = $assignmentGroupId }
 }
 
 # 5. Verify

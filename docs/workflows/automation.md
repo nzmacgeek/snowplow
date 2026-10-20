@@ -21,6 +21,10 @@ Add-SnowplowProfile -Name nightly -Instance acme -ClientCredentialSecretName Sno
 
 ```powershell
 Import-Module Snowplow
+$vaultPassword = ConvertTo-SecureString $env:SNOWPLOW_VAULT_PASSWORD -AsPlainText -Force
+$unlockParameters = @{ Password = $vaultPassword }
+Unlock-SecretStore @unlockParameters
+
 try {
     Connect-Snowplow -Profile nightly -ClientCredentials
     Get-SnowRecord -Table incident -Query 'active=true^priorityIN1,2' `
@@ -31,6 +35,8 @@ finally {
     Disconnect-Snowplow
 }
 ```
+
+Configure the scheduler to inject the SecretStore password as `SNOWPLOW_VAULT_PASSWORD`.
 
 ## GitHub Actions
 

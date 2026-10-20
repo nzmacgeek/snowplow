@@ -26,7 +26,7 @@ The module never changes your prompt automatically.
 
 ### EXAMPLE 1
 ```
-" }
+function prompt { "$(Get-SnowplowPromptSegment) PS $($executionContext.SessionState.Path.CurrentLocation)$([char]62) " }
 ```
 
 Adds a safety indicator to your prompt so you always know which instance you are talking to.

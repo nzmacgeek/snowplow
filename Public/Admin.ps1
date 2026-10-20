@@ -31,7 +31,7 @@ function Get-SnowRecord {
 
         Looks up a single incident by number.
         .EXAMPLE
-        $query = New-SnowQuery | Where-SnowField sys_created_on -Operator '>' -Value (New-SnowRelativeDate -Last 7 -Unit Days)
+        $query = New-SnowQuery | Where-SnowField sys_created_on -Operator ([string][char]62) -Value (New-SnowRelativeDate -Last 7 -Unit Days)
         Get-SnowRecord -Table change_request -Query $query -All | Group-Object state | Select-Object Name, Count
 
         Counts every change request raised in the last week by state.
@@ -167,8 +167,11 @@ function Set-SnowRecord {
 
         Resolves an incident by looking up its sys_id from the number first.
         .EXAMPLE
+        $serviceDeskGroups = @(Get-SnowRecord -Table sys_user_group -Query 'name=Service Desk' -Fields sys_id -Limit 2)
+        if ($serviceDeskGroups.Count -ne 1) { throw "Expected exactly one Service Desk group, found $($serviceDeskGroups.Count)." }
+        $assignmentGroupId = $serviceDeskGroups[0].sys_id
         Get-SnowRecord -Table incident -Query 'active=true^assigned_to=' -Fields sys_id |
-            ForEach-Object { Set-SnowRecord -Table incident -SysId $_.sys_id -Values @{ assignment_group = 'Service Desk' } -WhatIf }
+            ForEach-Object { Set-SnowRecord -Table incident -SysId $_.sys_id -Values @{ assignment_group = $assignmentGroupId } -WhatIf }
 
         Previews reassigning every unassigned incident to the Service Desk group. Remove -WhatIf to apply.
     #>
@@ -224,7 +227,7 @@ function Remove-SnowRecord {
 
         Shows what would be deleted.
         .EXAMPLE
-        Get-SnowRecord -Table sys_user -Query 'user_name STARTSWITH test.' -Fields sys_id |
+        Get-SnowRecord -Table sys_user -Query 'user_nameSTARTSWITHtest.' -Fields sys_id |
             ForEach-Object { Remove-SnowRecord -Table sys_user -SysId $_.sys_id -Confirm:$false }
 
         Cleans up test accounts left behind by an automation run on a sub-production instance.

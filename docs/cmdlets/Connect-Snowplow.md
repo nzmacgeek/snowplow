@@ -32,7 +32,7 @@ is supplied.
 
 ### EXAMPLE 1
 ```
-'
+Connect-Snowplow -Instance dev12345 -ClientId 'your-oauth-client-id'
 ```
 
 Interactive sign-in.
@@ -40,7 +40,7 @@ Your browser opens, you sign in (including SSO and MFA), and the module keeps th
 
 ### EXAMPLE 2
 ```
-' -NoBrowser
+Connect-Snowplow -Instance dev12345 -ClientId 'your-oauth-client-id' -NoBrowser
 ```
 
 Sign in from a headless machine; open the printed URL on any device.

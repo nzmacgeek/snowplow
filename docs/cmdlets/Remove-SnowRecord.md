@@ -35,7 +35,7 @@ Shows what would be deleted.
 
 ### EXAMPLE 2
 ```
-Get-SnowRecord -Table sys_user -Query 'user_name STARTSWITH test.' -Fields sys_id |
+Get-SnowRecord -Table sys_user -Query 'user_nameSTARTSWITHtest.' -Fields sys_id |
     ForEach-Object { Remove-SnowRecord -Table sys_user -SysId $_.sys_id -Confirm:$false }
 ```
 

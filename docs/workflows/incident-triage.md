@@ -41,7 +41,12 @@ Prod profiles are read-only by default, so reconnect with writes enabled for thi
 Connect-Snowplow -Profile prod -ClientCredentials -AllowWrite
 
 $inc = Get-SnowRecord -Table incident -Query 'number=INC0010001' -Fields sys_id
-Set-SnowRecord -Table incident -SysId $inc.sys_id -Values @{ assignment_group = 'Service Desk' } -WhatIf
+$serviceDeskGroups = @(Get-SnowRecord -Table sys_user_group -Query 'name=Service Desk' -Fields sys_id -Limit 2)
+if ($serviceDeskGroups.Count -ne 1) {
+    throw "Expected exactly one Service Desk group, found $($serviceDeskGroups.Count)."
+}
+$assignmentGroupId = $serviceDeskGroups[0].sys_id
+Set-SnowRecord -Table incident -SysId $inc.sys_id -Values @{ assignment_group = $assignmentGroupId } -WhatIf
 Set-SnowRecord -Table incident -SysId $inc.sys_id -Values @{
     state       = '6'
     close_code  = 'Solved (Permanently)'

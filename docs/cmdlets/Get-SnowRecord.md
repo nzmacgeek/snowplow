@@ -46,7 +46,7 @@ Looks up a single incident by number.
 
 ### EXAMPLE 3
 ```
-' -Value (New-SnowRelativeDate -Last 7 -Unit Days)
+$query = New-SnowQuery | Where-SnowField sys_created_on -Operator ([string][char]62) -Value (New-SnowRelativeDate -Last 7 -Unit Days)
 Get-SnowRecord -Table change_request -Query $query -All | Group-Object state | Select-Object Name, Count
 ```
 

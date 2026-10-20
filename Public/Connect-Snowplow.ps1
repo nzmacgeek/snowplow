@@ -41,11 +41,11 @@ function Connect-Snowplow {
         .PARAMETER SkipValidation
         Skips the connectivity check made after authenticating.
         .EXAMPLE
-        Connect-Snowplow -Instance dev12345 -ClientId '<oauth-client-id>'
+        Connect-Snowplow -Instance dev12345 -ClientId 'your-oauth-client-id'
 
         Interactive sign-in. Your browser opens, you sign in (including SSO and MFA), and the module keeps the token.
         .EXAMPLE
-        Connect-Snowplow -Instance dev12345 -ClientId '<oauth-client-id>' -NoBrowser
+        Connect-Snowplow -Instance dev12345 -ClientId 'your-oauth-client-id' -NoBrowser
 
         Sign in from a headless machine; open the printed URL on any device.
         .EXAMPLE
