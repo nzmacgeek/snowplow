@@ -102,7 +102,7 @@ Describe 'Module' -Tag 'Unit' {
         (Get-Command -Module Snowplow -CommandType Function).Name | Sort-Object |
             Should -Be (@(
                 'Compare-SnowRecord', 'Connect-Snowplow', 'Disconnect-Snowplow', 'Export-SnowRecord',
-                'Get-SnowCI', 'Get-SnowCIRelationship', 'Get-SnowDictionary', 'Get-SnowRecord',
+                'Get-SnowCI', 'Get-SnowCIRelationship', 'Get-SnowDictionary', 'Get-SnowRecord', 'Get-SnowSyslog',
                 'Get-SnowTable', 'Get-SnowplowConfiguration', 'Get-SnowplowProfile', 'Get-SnowLink',
                 'Get-SnowplowPromptSegment', 'Open-SnowRecord', 'New-SnowRecord',
                 'New-SnowQuery', 'Find-SnowField', 'Add-SnowOrderBy', 'New-SnowRelativeDate',
@@ -1088,5 +1088,77 @@ Describe 'Admin cmdlets' -Tag 'Unit' {
         (TabExpansion2 $scriptText $scriptText.Length).CompletionMatches.CompletionText | Should -Contain incident
         $scriptText = 'Get-SnowRecord -Table incident -Fields short'
         (TabExpansion2 $scriptText $scriptText.Length).CompletionMatches.CompletionText | Should -Contain short_description
+    }
+}
+
+Describe 'Get-SnowSyslog' -Tag 'Unit' {
+    BeforeEach {
+        Mock -ModuleName Snowplow Start-SnowSleep {}
+        Mock -ModuleName Snowplow Write-Warning {}
+        $script:Poll = 0
+    }
+
+    It 'de-duplicates rows sharing a timestamp across polls' {
+        Mock -ModuleName Snowplow Invoke-SnowBackendRequest {
+            $script:Poll++
+            switch ($script:Poll) {
+                1 { [pscustomobject]@{ sys_id = 'a'; sys_created_on = '2030-01-01 00:00:01' } }
+                2 { 
+                    [pscustomobject]@{ sys_id = 'a'; sys_created_on = '2030-01-01 00:00:01' }
+                    [pscustomobject]@{ sys_id = 'b'; sys_created_on = '2030-01-01 00:00:01' }
+                    [pscustomobject]@{ sys_id = 'c'; sys_created_on = '2030-01-01 00:00:02' }
+                }
+                3 {
+                    [pscustomobject]@{ sys_id = 'b'; sys_created_on = '2030-01-01 00:00:01' }
+                    [pscustomobject]@{ sys_id = 'c'; sys_created_on = '2030-01-01 00:00:02' }
+                    [pscustomobject]@{ sys_id = 'd'; sys_created_on = '2030-01-01 00:00:02' }
+                }
+            }
+        }
+        $rows = @(Get-SnowSyslog -Wait -MaxPolls 2)
+        ($rows.sys_id -join ',') | Should -Be 'a,b,c,d'
+    }
+
+    It 'enforces a minimum poll interval' {
+        { Get-SnowSyslog -Wait -PollSeconds 1 } | Should -Throw
+    }
+
+    It 'backs off after a failed poll and recovers' {
+        Mock -ModuleName Snowplow Invoke-SnowBackendRequest {
+            $script:Poll++
+            if ($script:Poll -eq 2) { throw 'HTTP 503' }
+            if ($script:Poll -eq 3) { [pscustomobject]@{ sys_id = 'z'; sys_created_on = '2030-01-01 00:00:05' } }
+        }
+        $rows = @(Get-SnowSyslog -Wait -MaxPolls 2 -PollSeconds 5)
+        $rows.sys_id | Should -Be 'z'
+        Should -Invoke -ModuleName Snowplow Start-SnowSleep -ParameterFilter { $Seconds -eq 10 } -Times 1
+    }
+
+    It 'maps filters to an encoded query' {
+        Mock -ModuleName Snowplow Invoke-SnowBackendRequest { }
+        Get-SnowSyslog -Level error -Source 'Flow' -Message 'time^out' -User admin -Last 5 | Out-Null
+        Should -Invoke -ModuleName Snowplow Invoke-SnowBackendRequest -ParameterFilter {
+            $Query -like 'level=2^source=Flow^messageLIKEtime^^out^sys_created_by=admin^sys_created_on>=*^ORDERBYDESCsys_created_on^ORDERBYDESCsys_id' -and $First -eq 5
+        }
+    }
+
+    It 'requests formatter fields when pretty output uses a field projection' {
+        Mock -ModuleName Snowplow Invoke-SnowBackendRequest {
+            [pscustomobject]@{
+                sys_id = 'a'
+                sys_created_on = '2030-01-01 00:00:01'
+                level = '2'
+                source = 'Flow'
+                message = 'failure'
+            }
+        }
+        Get-SnowSyslog -Fields sys_id -Pretty | Out-Null
+        Should -Invoke -ModuleName Snowplow Invoke-SnowBackendRequest -ParameterFilter {
+            $Fields -contains 'sys_id' -and
+            $Fields -contains 'sys_created_on' -and
+            $Fields -contains 'level' -and
+            $Fields -contains 'source' -and
+            $Fields -contains 'message'
+        }
     }
 }
