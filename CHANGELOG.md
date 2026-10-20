@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-beta2
+
+- Added ability to get system logs from instance, with a `tail`-like behaviour [(#9)](https://github.com/nzmacgeek/snowplow/issues/9)
+
 ## 0.1.0-beta1
 
 - Added cross-platform PowerShell 7.2 support for ServiceNow administration through the Table API, with an optional now-sdk backend.
