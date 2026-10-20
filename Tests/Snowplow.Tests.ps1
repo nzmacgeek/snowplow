@@ -1141,4 +1141,24 @@ Describe 'Get-SnowSyslog' -Tag 'Unit' {
             $Query -like 'level=2^source=Flow^messageLIKEtime^^out^sys_created_by=admin^sys_created_on>=*^ORDERBYDESCsys_created_on^ORDERBYDESCsys_id' -and $First -eq 5
         }
     }
+
+    It 'requests formatter fields when pretty output uses a field projection' {
+        Mock -ModuleName Snowplow Invoke-SnowBackendRequest {
+            [pscustomobject]@{
+                sys_id = 'a'
+                sys_created_on = '2030-01-01 00:00:01'
+                level = '2'
+                source = 'Flow'
+                message = 'failure'
+            }
+        }
+        Get-SnowSyslog -Fields sys_id -Pretty | Out-Null
+        Should -Invoke -ModuleName Snowplow Invoke-SnowBackendRequest -ParameterFilter {
+            $Fields -contains 'sys_id' -and
+            $Fields -contains 'sys_created_on' -and
+            $Fields -contains 'level' -and
+            $Fields -contains 'source' -and
+            $Fields -contains 'message'
+        }
+    }
 }
