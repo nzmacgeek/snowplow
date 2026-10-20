@@ -27,18 +27,52 @@ function Write-SnowSyslogLine {
 
 function Get-SnowSyslog {
     <#
-    .SYNOPSIS
+        .SYNOPSIS
         Queries the ServiceNow system log, optionally following new entries like tail -f.
-    .DESCRIPTION
+        .DESCRIPTION
         Rows are returned oldest first. A time or row limit is always applied: by default the
         last 15 minutes, capped at 100 rows. With -Wait the log is polled every -PollSeconds
         (minimum 2) and only new rows are emitted; the last seen sys_created_on plus the sys_ids
         seen at that timestamp prevent duplicates and gaps. Failed polls back off and retry.
         Press Ctrl+C to stop. Use -Pretty for coloured console output instead of objects.
-    .EXAMPLE
+        .PARAMETER Table
+        syslog (default), syslog_transaction or syslog_app_scope.
+        .PARAMETER Level
+        error, warning, info or debug.
+        .PARAMETER Source
+        Filters on the log source.
+        .PARAMETER Message
+        Filters on text contained in the message.
+        .PARAMETER User
+        Filters on the user (sys_created_by).
+        .PARAMETER Since
+        Returns rows created after this time.
+        .PARAMETER Last
+        The maximum number of rows to return (default 100).
+        .PARAMETER Wait
+        Follows new rows until stopped.
+        .PARAMETER PollSeconds
+        Seconds between polls when -Wait is used (2-3600, default 5).
+        .PARAMETER MaxPolls
+        Stops after this many polls; 0 means unlimited.
+        .PARAMETER Pretty
+        Writes coloured lines to the console instead of returning objects.
+        .PARAMETER Fields
+        The fields to return.
+        .PARAMETER Backend
+        Rest, Sdk or Auto.
+        .EXAMPLE
         Get-SnowSyslog -Level error -Last 50
-    .EXAMPLE
-        Get-SnowSyslog -Wait -Source 'Flow Engine' -Message timeout -PollSeconds 10
+
+        Shows the last 50 errors from the past 15 minutes.
+        .EXAMPLE
+        Get-SnowSyslog -Wait -Pretty -Source 'Flow Engine' -Message timeout -PollSeconds 10
+
+        Watches for flow timeouts while you reproduce a problem.
+        .EXAMPLE
+        Get-SnowSyslog -Level error -Since (Get-Date).AddHours(-2) -Last 500 | Group-Object source | Sort-Object Count -Descending | Select-Object -First 5 Name, Count
+
+        Finds the noisiest error sources in the last two hours.
     #>
     [CmdletBinding()]
     [OutputType([pscustomobject])]

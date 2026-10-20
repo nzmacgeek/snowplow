@@ -1,11 +1,40 @@
 function Get-SnowLink {
     <#
-    .SYNOPSIS
+        .SYNOPSIS
         Builds a ServiceNow URL for a record, list, or table.
-    .EXAMPLE
-        Get-SnowLink -Table incident -SysId $id
-    .EXAMPLE
-        Get-SnowRecord -Table incident -Limit 5 | Get-SnowLink -Format Markdown
+        .DESCRIPTION
+        Builds a record URL from -Table with -SysId or -Number, a list URL from -Table with -Query, or
+        a table-definition URL with -Schema. Pipeline objects from Get-SnowRecord are accepted.
+        .PARAMETER Table
+        The table name. Taken from the pipeline object when omitted.
+        .PARAMETER InputObject
+        A record from Get-SnowRecord.
+        .PARAMETER SysId
+        The sys_id of the record.
+        .PARAMETER Number
+        A record number such as INC0010001. The record is resolved for you.
+        .PARAMETER Query
+        An encoded query to build a list URL.
+        .PARAMETER Schema
+        Builds a link to the table definition.
+        .PARAMETER Format
+        Url (default), Markdown or Html.
+        .PARAMETER Clipboard
+        Copies the result to the clipboard when supported.
+        .PARAMETER UseNavTo
+        Builds a classic frame-wrapped URL.
+        .EXAMPLE
+        Get-SnowLink -Table incident -Number INC0010001 -Format Markdown
+
+        Creates a link you can paste in Teams, Slack or a pull request.
+        .EXAMPLE
+        Get-SnowLink -Table incident -Query 'active=true^priority=1'
+
+        Creates a link to a filtered list view.
+        .EXAMPLE
+        Get-SnowRecord -Table change_request -Query 'state=-1' -Limit 5 | Get-SnowLink -Format Html
+
+        Produces HTML links for an email summary.
     #>
     [CmdletBinding()]
     param(
