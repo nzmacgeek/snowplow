@@ -10,7 +10,7 @@
         'Add-SnowOrderBy', 'Add-SnowplowProfile', 'Compare-SnowRecord', 'Connect-Snowplow',
         'Disconnect-Snowplow', 'Export-SnowRecord', 'Find-SnowField', 'Get-SnowCI',
         'Get-SnowCIRelationship', 'Get-SnowDictionary', 'Get-SnowLink',
-        'Get-SnowRecord', 'Get-SnowTable', 'Get-SnowplowConfiguration',
+        'Get-SnowRecord', 'Get-SnowSyslog', 'Get-SnowTable', 'Get-SnowplowConfiguration',
         'Get-SnowplowProfile', 'Get-SnowplowPromptSegment', 'New-SnowQuery',
         'New-SnowRecord', 'New-SnowRelativeDate', 'Open-SnowRecord',
         'Remove-SnowRecord', 'Remove-SnowplowProfile', 'Set-SnowRecord',

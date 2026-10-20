@@ -156,3 +156,10 @@ copying requires an available desktop clipboard utility. The optional Sdk
 backend's table adapter is not yet implemented, so use Rest.
 
 Run the Pester tests with `Invoke-Pester ./Tests`.
+
+## System log
+
+`Get-SnowSyslog` queries `syslog` (or `syslog_transaction` / `syslog_app_scope`) with
+`-Level`, `-Source`, `-Message`, `-User`, `-Since` and `-Last`. By default it returns at most
+100 rows from the last 15 minutes. `-Wait` follows new rows like `tail -f` every
+`-PollSeconds` (default 5, minimum 2) without duplicates; `-Pretty` prints coloured lines.
