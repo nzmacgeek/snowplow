@@ -78,7 +78,12 @@ function Get-SnowSyslog {
 
     $request = @{ Table = $Table; Fields = $Fields; Backend = $Backend }
     if ($Fields) {
-        $request.Fields = @($Fields + 'sys_id' + 'sys_created_on' | Select-Object -Unique)
+        $requiredFields = @('sys_id', 'sys_created_on')
+        if ($Pretty) {
+            if ($Table -eq 'syslog_transaction') { $requiredFields += 'url' }
+            else { $requiredFields += @('level', 'source', 'message') }
+        }
+        $request.Fields = @($Fields + $requiredFields | Select-Object -Unique)
     }
     $emit = {
         param($row)
@@ -111,7 +116,7 @@ function Get-SnowSyslog {
             $delay = if ($failures) { [Math]::Min($PollSeconds * [Math]::Pow(2, $failures), 300) } else { $PollSeconds }
             Start-SnowSleep -Seconds $delay
             $polls++
-            $pollFilter = ($terms | Where-Object { $_ -notlike 'sys_created_on>=*' }) + "sys_created_on>=$lastCreated" -join '^'
+            $pollFilter = (@($terms | Where-Object { $_ -notlike 'sys_created_on>=*' }) + "sys_created_on>=$lastCreated") -join '^'
             try {
                 $rows = @(Invoke-SnowBackendRequest @request -Query "$pollFilter^ORDERBYsys_created_on^ORDERBYsys_id" -PageSize 1000)
                 $failures = 0
