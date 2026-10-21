@@ -1,17 +1,65 @@
 function Connect-Snowplow {
     <#
-    .SYNOPSIS
+        .SYNOPSIS
         Connects to a ServiceNow instance and stores the session in module scope.
-    .DESCRIPTION
+        .DESCRIPTION
         Authorization code with PKCE is the default interactive grant and opens a browser.
         Use -ClientCredentials for unattended automation with a dedicated service account.
-        Legacy password and Basic authentication are retained for compatibility.
-    .EXAMPLE
-        Connect-Snowplow -Instance dev12345 -ClientId '<oauth-client-id>'
-    .EXAMPLE
+        Basic authentication is retained for compatibility and emits a deprecation warning.
+        Sessions require HTTPS. Prod-tagged profiles warn on connect and are read-only unless -AllowWrite
+        is supplied.
+        .PARAMETER Instance
+        The instance name (dev12345) or a full https URL.
+        .PARAMETER Profile
+        The name of a saved profile created by Add-SnowplowProfile.
+        .PARAMETER AuthMethod
+        OAuth (default) or Basic.
+        .PARAMETER ClientId
+        The OAuth application client ID for the authorization code grant.
+        .PARAMETER AuthorizationCode
+        Explicitly selects the authorization code with PKCE grant.
+        .PARAMETER ClientCredentials
+        Selects the client credentials grant for unattended use.
+        .PARAMETER RedirectPort
+        The local loopback port (1024-65535) used to receive the authorization code.
+        .PARAMETER NoBrowser
+        Prints the sign-in URL instead of opening a browser, for SSH sessions and containers.
+        .PARAMETER ClientCredential
+        A PSCredential whose username is the OAuth client ID and password is the client secret.
+        .PARAMETER Credential
+        A PSCredential for Basic authentication.
+        .PARAMETER AccessToken
+        An existing bearer token to use as-is.
+        .PARAMETER ClientCredentialSecretName
+        The name of a SecretManagement secret holding the client credential.
+        .PARAMETER CredentialSecretName
+        The name of a SecretManagement secret holding the Basic credential.
+        .PARAMETER Vault
+        The SecretManagement vault to read secrets from.
+        .PARAMETER AllowWrite
+        Allows writes on a Prod-tagged profile.
+        .PARAMETER SkipValidation
+        Skips the connectivity check made after authenticating.
+        .EXAMPLE
+        Connect-Snowplow -Instance dev12345 -ClientId 'your-oauth-client-id'
+
+        Interactive sign-in. Your browser opens, you sign in (including SSO and MFA), and the module keeps the token.
+        .EXAMPLE
+        Connect-Snowplow -Instance dev12345 -ClientId 'your-oauth-client-id' -NoBrowser
+
+        Sign in from a headless machine; open the printed URL on any device.
+        .EXAMPLE
         Connect-Snowplow -Instance dev12345 -ClientCredential (Get-Credential) -ClientCredentials
-    .EXAMPLE
-        Connect-Snowplow -Instance dev12345 -ClientCredentialSecretName SnowClient -Vault MyVault -ClientCredentials
+
+        Unattended sign-in with a service account's client ID and secret.
+        .EXAMPLE
+        Connect-Snowplow -Instance dev12345 -ClientCredentialSecretName SnowplowOAuth -Vault SnowplowVault -ClientCredentials
+
+        Reads the client credential from SecretManagement so no secret appears in your script.
+        .EXAMPLE
+        Connect-Snowplow -Profile prod -ClientCredentials -AllowWrite
+
+        Connects to a Prod profile with writes explicitly enabled.
     #>
     [CmdletBinding()]
     [OutputType([pscustomobject])]

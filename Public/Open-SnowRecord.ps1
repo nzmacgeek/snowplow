@@ -1,11 +1,40 @@
 function Open-SnowRecord {
     <#
-    .SYNOPSIS
+        .SYNOPSIS
         Opens a ServiceNow record, list, or table in the default browser.
-    .EXAMPLE
-        Open-SnowRecord -Table incident -SysId $id
-    .EXAMPLE
-        Get-SnowRecord -Table incident -Limit 5 | Open-SnowRecord
+        .DESCRIPTION
+        Accepts the same targets as Get-SnowLink. Pipeline batches over five records ask for
+        confirmation unless -Force is supplied. On Linux a graphical session and xdg-open are needed.
+        .PARAMETER Table
+        The table name.
+        .PARAMETER InputObject
+        A record from Get-SnowRecord.
+        .PARAMETER SysId
+        The sys_id of the record.
+        .PARAMETER Number
+        A record number such as INC0010001.
+        .PARAMETER Query
+        Opens a list view filtered by this encoded query.
+        .PARAMETER Schema
+        Opens the table definition.
+        .PARAMETER PassThru
+        Returns the URLs without opening the browser.
+        .PARAMETER Force
+        Skips the confirmation for batches over five records.
+        .PARAMETER UseNavTo
+        Uses the classic frame-wrapped URL.
+        .EXAMPLE
+        Open-SnowRecord -Table incident -Number INC0010001
+
+        Jumps straight to an incident from the console.
+        .EXAMPLE
+        Get-SnowRecord -Table incident -Query 'active=true^priority=1' | Open-SnowRecord
+
+        Opens every active P1 (asks first if more than five).
+        .EXAMPLE
+        Open-SnowRecord -Table incident -Query 'active=true^assignment_group.name=Service Desk'
+
+        Opens the Service Desk queue as a list.
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(

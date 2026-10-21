@@ -1,9 +1,14 @@
 function Get-SnowplowPromptSegment {
     <#
-    .SYNOPSIS
+        .SYNOPSIS
         Returns a colored prompt segment for the active Snowplow connection.
-    .EXAMPLE
-        "$(Get-SnowplowPromptSegment) PS $($executionContext.SessionState.Path.CurrentLocation)> "
+        .DESCRIPTION
+        Returns the profile (or instance) name; Prod is red and Test is yellow. Returns nothing when
+        disconnected. The module never changes your prompt automatically.
+        .EXAMPLE
+        function prompt { "$(Get-SnowplowPromptSegment) PS $($executionContext.SessionState.Path.CurrentLocation)$([char]62) " }
+
+        Adds a safety indicator to your prompt so you always know which instance you are talking to.
     #>
     [CmdletBinding()]
     param()

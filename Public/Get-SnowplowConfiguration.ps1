@@ -1,9 +1,13 @@
 function Get-SnowplowConfiguration {
     <#
-    .SYNOPSIS
+        .SYNOPSIS
         Returns module-level settings.
-    .EXAMPLE
+        .DESCRIPTION
+        Returns settings such as the default backend.
+        .EXAMPLE
         Get-SnowplowConfiguration
+
+        Shows the current settings.
     #>
     [CmdletBinding()]
     param()
