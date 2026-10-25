@@ -63,6 +63,7 @@ function Invoke-SnowRequest {
             catch {
                 $status = $null
                 $retryAfter = $null
+                $transientNetworkFailure = $false
                 if ($_.Exception.PSObject.Properties['Response'] -and $_.Exception.Response) {
                     $status = [int]$_.Exception.Response.StatusCode
                     $values = $null
@@ -86,7 +87,32 @@ function Invoke-SnowRequest {
                         }
                     }
                 }
-                $retryable = $status -eq 429 -or ($status -ge 500 -and $Method -ne 'POST')
+                if ($isRead -and $null -eq $status) {
+                    $exception = $_.Exception
+                    while ($exception) {
+                        if ($exception -is [System.Net.Http.HttpRequestException]) {
+                            $transientNetworkFailure = $true
+                            break
+                        }
+                        if ($exception -is [System.Net.WebException] -and
+                            $exception.Status -in @(
+                                [System.Net.WebExceptionStatus]::NameResolutionFailure,
+                                [System.Net.WebExceptionStatus]::ConnectFailure,
+                                [System.Net.WebExceptionStatus]::Timeout,
+                                [System.Net.WebExceptionStatus]::ConnectionClosed,
+                                [System.Net.WebExceptionStatus]::KeepAliveFailure,
+                                [System.Net.WebExceptionStatus]::ReceiveFailure,
+                                [System.Net.WebExceptionStatus]::SendFailure,
+                                [System.Net.WebExceptionStatus]::PipelineFailure,
+                                [System.Net.WebExceptionStatus]::ProxyNameResolutionFailure
+                            )) {
+                            $transientNetworkFailure = $true
+                            break
+                        }
+                        $exception = $exception.InnerException
+                    }
+                }
+                $retryable = $status -eq 429 -or ($status -ge 500 -and $Method -ne 'POST') -or $transientNetworkFailure
                 if (-not $retryable -or $attempt -ge $MaxRetries) {
                     $PSCmdlet.ThrowTerminatingError((ConvertTo-SnowErrorRecord -ErrorRecord $_ -Target $uri.AbsolutePath))
                 }
@@ -95,7 +121,8 @@ function Invoke-SnowRequest {
                 }
                 $delay = if ($null -ne $retryAfter) { $retryAfter }
                 else { $BaseDelaySeconds * [Math]::Pow(2, $attempt) * (0.5 + [Random]::Shared.NextDouble() / 2) }
-                Write-Verbose "HTTP $status from $($uri.AbsolutePath); retry $($attempt + 1)/$MaxRetries in $([Math]::Round($delay, 2))s."
+                $failure = if ($status) { "HTTP $status" } else { 'Transient network failure' }
+                Write-Verbose "$failure from $($uri.AbsolutePath); retry $($attempt + 1)/$MaxRetries in $([Math]::Round($delay, 2))s."
                 Start-SnowSleep -Seconds $delay
                 $attempt++
             }

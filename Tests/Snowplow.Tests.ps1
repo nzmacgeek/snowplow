@@ -493,7 +493,7 @@ Describe 'Connect-Snowplow' -Tag 'Unit' {
                 $requestBytes = [Text.Encoding]::ASCII.GetBytes($request)
                 $stream.Write($requestBytes, 0, $requestBytes.Length)
                 $stream.Flush()
-                $true
+                [pscustomobject]@{ HasExited = $false; Client = $client }
             }
             $portListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
             $portListener.Start()
@@ -890,6 +890,30 @@ Describe 'Invoke-SnowRequest' -Tag 'Unit' {
         $err.FullyQualifiedErrorId | Should -BeLike 'Snowplow.Http503*'
         $err.Exception.Message | Should -BeLike '*Down*maintenance*'
         $err.CategoryInfo.Category | Should -Be 'ResourceUnavailable'
+    }
+
+    It 'retries transient network failures for reads' {
+        $script:calls = 0
+        Mock -ModuleName Snowplow Invoke-RestMethod {
+            $script:calls++
+            if ($script:calls -eq 1) { throw [System.Net.Http.HttpRequestException]::new('connection reset') }
+            [pscustomobject]@{ result = @([pscustomobject]@{ ok = 1 }) }
+        }
+        $result = InModuleScope Snowplow { Invoke-SnowRequest -Table incident -BaseDelaySeconds 0 }
+        @($result).Count | Should -Be 1
+        Should -Invoke -ModuleName Snowplow Invoke-RestMethod -Times 2 -Exactly
+        Should -Invoke -ModuleName Snowplow Start-SnowSleep -Times 1 -Exactly
+    }
+
+    It 'does not retry writes after a network failure' {
+        Mock -ModuleName Snowplow Invoke-RestMethod {
+            throw [System.Net.Http.HttpRequestException]::new('connection reset')
+        }
+        InModuleScope Snowplow {
+            { Invoke-SnowRequest -Table incident -Method POST -Body @{ a = 1 } -MaxRetries 2 -Confirm:$false } |
+                Should -Throw '*connection reset*'
+        }
+        Should -Invoke -ModuleName Snowplow Invoke-RestMethod -Times 1 -Exactly
     }
 
     It 'does not retry 4xx and maps the error' {

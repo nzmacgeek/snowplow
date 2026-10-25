@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-beta3
+
+- Made Connect-Snowplow more reliable
+
 ## 0.1.0-beta2
 
 - Added ability to get system logs from instance, with a `tail`-like behaviour [(#9)](https://github.com/nzmacgeek/snowplow/issues/9)
