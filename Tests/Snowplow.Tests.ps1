@@ -493,7 +493,7 @@ Describe 'Connect-Snowplow' -Tag 'Unit' {
                 $requestBytes = [Text.Encoding]::ASCII.GetBytes($request)
                 $stream.Write($requestBytes, 0, $requestBytes.Length)
                 $stream.Flush()
-                $true
+                [pscustomobject]@{ HasExited = $false; Client = $client }
             }
             $portListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
             $portListener.Start()
