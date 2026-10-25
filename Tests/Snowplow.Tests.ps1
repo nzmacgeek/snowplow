@@ -892,6 +892,30 @@ Describe 'Invoke-SnowRequest' -Tag 'Unit' {
         $err.CategoryInfo.Category | Should -Be 'ResourceUnavailable'
     }
 
+    It 'retries transient network failures for reads' {
+        $script:calls = 0
+        Mock -ModuleName Snowplow Invoke-RestMethod {
+            $script:calls++
+            if ($script:calls -eq 1) { throw [System.Net.Http.HttpRequestException]::new('connection reset') }
+            [pscustomobject]@{ result = @([pscustomobject]@{ ok = 1 }) }
+        }
+        $result = InModuleScope Snowplow { Invoke-SnowRequest -Table incident -BaseDelaySeconds 0 }
+        @($result).Count | Should -Be 1
+        Should -Invoke -ModuleName Snowplow Invoke-RestMethod -Times 2 -Exactly
+        Should -Invoke -ModuleName Snowplow Start-SnowSleep -Times 1 -Exactly
+    }
+
+    It 'does not retry writes after a network failure' {
+        Mock -ModuleName Snowplow Invoke-RestMethod {
+            throw [System.Net.Http.HttpRequestException]::new('connection reset')
+        }
+        InModuleScope Snowplow {
+            { Invoke-SnowRequest -Table incident -Method POST -Body @{ a = 1 } -MaxRetries 2 -Confirm:$false } |
+                Should -Throw '*connection reset*'
+        }
+        Should -Invoke -ModuleName Snowplow Invoke-RestMethod -Times 1 -Exactly
+    }
+
     It 'does not retry 4xx and maps the error' {
         Mock -ModuleName Snowplow Invoke-RestMethod { throw (New-HttpError 404 '{"error":{"message":"No Record found"},"status":"failure"}') }
         $err = InModuleScope Snowplow { try { Invoke-SnowRequest -Table incident -SysId ('b' * 32) } catch { $_ } }
