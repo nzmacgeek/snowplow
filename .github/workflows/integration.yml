@@ -34,10 +34,14 @@ jobs:
           SNOW_INSTANCE: ${{ secrets.SNOW_INSTANCE }}
           SNOW_USERNAME: ${{ secrets.SNOW_USERNAME }}
           SNOW_PASSWORD: ${{ secrets.SNOW_PASSWORD }}
+          SNOW_OAUTH_CLIENT_ID: ${{ secrets.SNOW_OAUTH_CLIENT_ID }}
+          SNOW_OAUTH_CLIENT_SECRET: ${{ secrets.SNOW_OAUTH_CLIENT_SECRET }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ([string]::IsNullOrWhiteSpace($env:SNOW_INSTANCE) -or [string]::IsNullOrWhiteSpace($env:SNOW_USERNAME) -or [string]::IsNullOrWhiteSpace($env:SNOW_PASSWORD)) {
-            throw 'The Snowplow integration job requires SNOW_INSTANCE, SNOW_USERNAME, and SNOW_PASSWORD secrets.'
+          $requiredSecrets = 'SNOW_INSTANCE', 'SNOW_USERNAME', 'SNOW_PASSWORD', 'SNOW_OAUTH_CLIENT_ID', 'SNOW_OAUTH_CLIENT_SECRET'
+          $missingSecrets = @($requiredSecrets | Where-Object { [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) })
+          if ($missingSecrets.Count -gt 0) {
+            throw "The Snowplow integration job requires these GitHub Actions secrets: $($missingSecrets -join ', ')."
           }
 
           $uri = "https://$($env:SNOW_INSTANCE).service-now.com/"
@@ -65,6 +69,8 @@ jobs:
           SNOW_INSTANCE: ${{ secrets.SNOW_INSTANCE }}
           SNOW_USERNAME: ${{ secrets.SNOW_USERNAME }}
           SNOW_PASSWORD: ${{ secrets.SNOW_PASSWORD }}
+          SNOW_OAUTH_CLIENT_ID: ${{ secrets.SNOW_OAUTH_CLIENT_ID }}
+          SNOW_OAUTH_CLIENT_SECRET: ${{ secrets.SNOW_OAUTH_CLIENT_SECRET }}
         run: |
           $ErrorActionPreference = 'Stop'
           $configuration = New-PesterConfiguration
