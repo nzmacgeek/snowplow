@@ -6,7 +6,8 @@ function Invoke-SnowRequest {
         GET without -SysId pages with sysparm_limit/sysparm_offset until a short page is returned
         or -First records have been emitted. Retries on 429 and 5xx with exponential backoff and
         jitter (honouring Retry-After); non-idempotent POST is only retried on 429, since a 5xx
-        may mean the write succeeded. Anything other than GET goes through ShouldProcess.
+        may mean the write succeeded. Each request has a bounded timeout (-TimeoutSeconds, default 60)
+        so a stalled connection fails or retries instead of hanging. Anything other than GET goes through ShouldProcess.
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     param(
@@ -20,7 +21,8 @@ function Invoke-SnowRequest {
         [ValidateRange(1, [int]::MaxValue)][int]$First,
         [object]$Body,
         [ValidateRange(0, 10)][int]$MaxRetries = 4,
-        [ValidateRange(0.0, 60.0)][double]$BaseDelaySeconds = 1.0
+        [ValidateRange(0.0, 60.0)][double]$BaseDelaySeconds = 1.0,
+        [ValidateRange(1, 3600)][int]$TimeoutSeconds = 60
     )
 
     $session = Get-SnowSession
@@ -46,6 +48,7 @@ function Invoke-SnowRequest {
         $params = @{
             Uri         = $uri
             Method      = $Method
+            TimeoutSec  = $TimeoutSeconds
             ErrorAction = 'Stop'
         }
         if ($null -ne $Body) {
@@ -90,7 +93,9 @@ function Invoke-SnowRequest {
                 if ($isRead -and $null -eq $status) {
                     $exception = $_.Exception
                     while ($exception) {
-                        if ($exception -is [System.Net.Http.HttpRequestException]) {
+                        if ($exception -is [System.Net.Http.HttpRequestException] -or
+                            $exception -is [System.TimeoutException] -or
+                            $exception -is [System.Threading.Tasks.TaskCanceledException]) {
                             $transientNetworkFailure = $true
                             break
                         }

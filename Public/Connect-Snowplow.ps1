@@ -212,7 +212,7 @@ function Connect-Snowplow {
         }
         if (-not $SkipValidation) {
             # Fetches a token (OAuth) and proves the credentials can reach the Table API.
-            $null = Invoke-SnowRequest -Table sys_user -Fields sys_id -First 1 -PageSize 1
+            $null = Invoke-SnowRequest -Table sys_user -Fields sys_id -First 1 -PageSize 1 -MaxRetries 0 -TimeoutSeconds 30
         }
     }
     catch {
