@@ -69,7 +69,7 @@ function Request-SnowOAuthToken {
     try {
         $resp = Invoke-RestMethod -Uri ([uri]::new($Session.BaseUri, '/oauth_token.do')) -Method Post `
             -Body $form -ContentType 'application/x-www-form-urlencoded' -Headers @{ Accept = 'application/json' } `
-            -ErrorAction Stop
+            -TimeoutSec 60 -ErrorAction Stop
     }
     catch {
         if ($refreshing -and (Get-SnowOAuthErrorCode -ErrorRecord $_) -eq 'invalid_grant') {
